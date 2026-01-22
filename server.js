@@ -1,24 +1,46 @@
-const express=require("express");
-const http=require("http");
-const cors=require("cors");
+const express = require("express");
+const http = require("http");
+const { Server } = require("socket.io");
 
-const app=express();
-app.use(cors());
-app.use(express.json());
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server);
 
-const server=http.createServer(app);
+let devices = {}; // device_id -> socket.id
 
-const io=require("socket.io")(server,{
-cors:{origin:"*"}
+app.get("/devices", (req, res) => {
+  res.json(Object.keys(devices));
 });
 
-io.on("connection",sock=>{
-sock.on("join",uid=>sock.join(uid));
+io.on("connection", socket => {
+
+  socket.on("register", data => {
+    devices[data.device_id] = socket.id;
+    io.emit("device_list", Object.keys(devices));
+  });
+
+  socket.on("offer", d => {
+    io.to(devices[d.device_id]).emit("offer", d);
+  });
+
+  socket.on("answer", d => {
+    io.to(devices[d.device_id]).emit("answer", d);
+  });
+
+  socket.on("ice", d => {
+    io.to(devices[d.device_id]).emit("ice", d);
+  });
+
+  socket.on("control", d => {
+    io.to(devices[d.device_id]).emit("control", d);
+  });
+
+  socket.on("disconnect", () => {
+    for (let k in devices)
+      if (devices[k] === socket.id) delete devices[k];
+    io.emit("device_list", Object.keys(devices));
+  });
+
 });
 
-app.post("/push",(req,res)=>{
-io.to(req.body.uid).emit("update",req.body);
-res.json({ok:true});
-});
-
-server.listen(3000);
+server.listen(3000, () => console.log("Server running"));

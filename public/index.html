@@ -1,48 +1,43 @@
-<video id="v" autoplay playsinline></video>
+<h3>Devices</h3>
+<ul id="list"></ul>
+<video id="v" autoplay playsinline style="width:360px"></video>
+
 <script src="/socket.io/socket.io.js"></script>
 <script>
 const socket = io();
-let deviceId, pc;
+let pc, deviceId;
+
+socket.on("device_list", list => {
+  const ul = document.getElementById("list");
+  ul.innerHTML="";
+  list.forEach(id=>{
+    const li=document.createElement("li");
+    li.textContent=id;
+    li.onclick=()=>connect(id);
+    ul.appendChild(li);
+  });
+});
 
 function connect(id){
-  deviceId = id;
-  pc = new RTCPeerConnection({
-    iceServers:[{urls:"stun:stun.l.google.com:19302"}]
-  });
-
-  pc.ontrack = e => v.srcObject = e.streams[0];
-
-  pc.onicecandidate = e => {
-    if(e.candidate){
-      socket.emit("ice", {
-        device_id: deviceId,
-        candidate: e.candidate.candidate,
-        sdpMid: e.candidate.sdpMid,
-        sdpMLineIndex: e.candidate.sdpMLineIndex
-      });
-    }
+  deviceId=id;
+  pc=new RTCPeerConnection({iceServers:[{urls:"stun:stun.l.google.com:19302"}]});
+  pc.ontrack=e=>v.srcObject=e.streams[0];
+  pc.onicecandidate=e=>{
+    if(e.candidate) socket.emit("ice",{device_id:id,...e.candidate});
   };
-
-  socket.emit("start", deviceId);
+  socket.emit("start",id);
 }
 
-socket.on("offer", async d => {
-  await pc.setRemoteDescription({type:"offer", sdp:d.sdp});
-  const ans = await pc.createAnswer();
+socket.on("offer",async d=>{
+  await pc.setRemoteDescription({type:"offer",sdp:d.sdp});
+  const ans=await pc.createAnswer();
   await pc.setLocalDescription(ans);
-  socket.emit("answer", {device_id:deviceId, sdp:ans.sdp});
+  socket.emit("answer",{device_id:deviceId,sdp:ans.sdp});
 });
 
-socket.on("ice", d => {
-  pc.addIceCandidate(new RTCIceCandidate(d));
-});
+socket.on("ice",d=>pc.addIceCandidate(d));
 
-v.onclick = e => {
-  socket.emit("control", {
-    device_id: deviceId,
-    type:"tap",
-    x:e.offsetX,
-    y:e.offsetY
-  });
+v.onclick=e=>{
+  socket.emit("control",{device_id:deviceId,x:e.offsetX,y:e.offsetY});
 };
 </script>

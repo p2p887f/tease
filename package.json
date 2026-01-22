@@ -1,23 +1,20 @@
 {
-  "name": "realtime-recharge-server",
+  "name": "remote-device-server",
   "version": "1.0.0",
-  "description": "Realtime TRX Mobile Recharge Notification Server",
-  "main": "index.js",
-  "type": "commonjs",
+  "description": "Socket.IO + WebRTC signaling server for Android remote screen & control",
+  "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js"
   },
   "dependencies": {
-    "axios": "^1.7.7",
-    "cors": "^2.8.5",
-    "express": "^4.21.1",
-    "socket.io": "^4.8.1"
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
   },
   "devDependencies": {
     "nodemon": "^3.1.0"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=18.0.0"
   }
 }

@@ -7,7 +7,7 @@ const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
-const io = socketIo(server, { 
+const io = socketIo(server, {
     cors: { origin: "*", methods: ["GET", "POST"] },
     pingInterval: 25000,
     pingTimeout: 60000
@@ -15,70 +15,62 @@ const io = socketIo(server, {
 
 app.use(cors());
 app.use(compression());
-app.use(express.json({ limit: '100mb' }));
+app.use(express.json({ limit: '50mb' }));
 app.use(express.static('public'));
 
 let devices = new Map();
-let deviceLayouts = new Map();
 
-// API Routes
+// /register - Device registration
 app.post('/register', (req, res) => {
     const device = req.body;
     device.lastSeen = new Date();
     devices.set(device.deviceId, device);
-    console.log(`✅ ${device.model || device.deviceId} registered`);
+    console.log(`✅ Device registered: ${device.model} (${device.deviceId})`);
     res.json({ success: true });
 });
 
-app.get('/devices', (req, res) => {
-    const deviceList = Array.from(devices.values())
-        .map(d => ({ ...d, online: Date.now() - (new Date(d.lastSeen).getTime()) < 60000 }));
-    res.json(deviceList);
+// /fetch - List all devices
+app.get('/fetch', (req, res) => {
+    const list = Array.from(devices.values()).map(d => ({
+        ...d,
+        online: (new Date() - new Date(d.lastSeen)) < 60000
+    }));
+    res.json(list);
 });
 
-app.get('/device/:id', (req, res) => {
+// /device=ID - Control panel
+app.get('/device=:deviceId', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'control.html'));
 });
 
-// Socket.IO
 io.on('connection', (socket) => {
-    console.log('🔌 Connection:', socket.id);
-    
+    console.log('🔌 Client connected:', socket.id);
+
     socket.on('register', (data) => {
         socket.deviceId = data.deviceId;
-        const device = devices.get(data.deviceId);
-        if (device) {
-            device.socketId = socket.id;
-            device.lastSeen = new Date();
-        }
+        socket.join(`device_${data.deviceId}`);
+        console.log(`📱 Device ${data.deviceId} joined`);
     });
-    
+
     socket.on('layout', (layout) => {
         if (socket.deviceId) {
-            deviceLayouts.set(socket.deviceId, {
-                data: layout,
-                timestamp: new Date()
-            });
-            // Broadcast to control clients
-            socket.broadcast.to(`control_${socket.deviceId}`).emit('layout', layout);
+            socket.broadcast.to(`device_${socket.deviceId}`).emit('layout', layout);
         }
     });
-    
-    socket.on('disconnect', () => {
-        if (socket.deviceId) {
-            const device = devices.get(socket.deviceId);
-            if (device) device.status = 'offline';
-        }
-    });
-});
 
-// Control room join
-app.get('/control/:deviceId', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'control.html'));
+    socket.on('heartbeat', (data) => {
+        if (devices.has(data.deviceId)) {
+            devices.get(data.deviceId).lastSeen = new Date();
+        }
+    });
+
+    socket.on('disconnect', () => {
+        console.log('🔌 Client disconnected:', socket.id);
+    });
 });
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-    console.log(`🚀 Server: http://0.0.0.0:${PORT}`);
-    console.log(`📱 Devices: http://localhost:${PORT}/devices`);
+    console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`📱 Devices: https://your-app.onrender.com/fetch`);
 });

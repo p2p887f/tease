@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>📱 Remote Control Panel</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{font-family:system-ui;background:#1a1a2e;color:#fff;overflow:hidden}
+        #devices{padding:2rem;max-height:100vh;overflow:auto;background:#16213e}
+        #deviceList{display:grid;gap:1rem;grid-template-columns:repeat(auto-fill,minmax(300px,1fr))}
+        .device{background:linear-gradient(135deg,#667eea,#764ba2);padding:1.5rem;border-radius:15px;cursor:pointer;transition:all .3s}
+        .device:hover{transform:translateY(-5px);box-shadow:0 20px 40px rgba(0,0,0,.3)}
+        .device.online{box-shadow:0 0 30px #00ff88}
+        .online-status{display:inline-block;width:12px;height:12px;background:#00ff88;border-radius:50%;margin-right:8px}
+        .offline-status{background:#ff4757}
+        #control{display:none;position:fixed;top:0;left:0;width:100vw;height:100vh}
+        #screen{width:100%;height:100%;background:#000;cursor:crosshair;touch-action:none}
+        .controls{position:fixed;top:20px;right:20px;z-index:999;display:flex;flex-direction:column;gap:10px}
+        .btn{padding:12px 24px;background:#ff4757;color:white;border:none;border-radius:25px;font-size:16px;cursor:pointer;transition:all .2s}
+        .btn:hover{transform:scale(1.05)}
+        h1{margin-bottom:2rem;font-size:2.5rem;text-align:center}
+    </style>
+</head>
+<body>
+    <div id="devices">
+        <h1>📱 Connected Devices</h1>
+        <div id="deviceList"></div>
+        <button class="btn" style="width:100%;margin-top:2rem" onclick="loadDevices()">🔄 Refresh</button>
+    </div>
+    
+    <div id="control">
+        <div class="controls">
+            <button class="btn" onclick="back()">🔙 Back</button>
+            <button class="btn" onclick="home()">🏠 Home</button>
+            <button class="btn" onclick="showDevices()">📋 Devices</button>
+        </div>
+        <canvas id="screen"></canvas>
+    </div>
+
+    <script>
+        const socket = io();
+        let currentDevice = null;
+        let canvas, ctx, lastLayout = null;
+
+        function loadDevices() {
+            fetch('/fetch')
+                .then(r=>r.json())
+                .then(devices => {
+                    document.getElementById('deviceList').innerHTML = 
+                        devices.map(d=>`
+                            <div class="device ${d.online?'online':''}" onclick="control('${d.deviceId}')">
+                                <div style="font-size:1.2em;font-weight:bold">
+                                    <span class="${d.online?'online-status':'offline-status'}"></span>
+                                    ${d.model||d.deviceId}
+                                </div>
+                                <div>${d.brand} • Android ${d.android}</div>
+                                <div style="font-size:0.9em;opacity:0.8">
+                                    ${d.online?'🟢 Online':'🔴 Offline'} • ${new Date(d.lastSeen).toLocaleTimeString()}
+                                </div>
+                            </div>
+                        `).join('');
+                });
+        }
+
+        function control(deviceId) {
+            currentDevice = deviceId;
+            document.getElementById('devices').style.display = 'none';
+            document.getElementById('control').style.display = 'block';
+            canvas = document.getElementById('screen');
+            ctx = canvas.getContext('2d');
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            socket.emit('join', {deviceId});
+        }
+
+        socket.on('layout', layout => {
+            if (currentDevice) {
+                lastLayout = JSON.parse(layout);
+                render();
+            }
+        });
+
+        function render() {
+            if (!lastLayout) return;
+            ctx.clearRect(0,0,canvas.width,canvas.height);
+            const scaleX = canvas.width / 1080;
+            const scaleY = canvas.height / 1920;
+            drawNode(lastLayout, 0, 0, scaleX, scaleY);
+        }
+
+        function drawNode(node, ox, oy, sx, sy) {
+            if (!node.bounds) return;
+            const r = {
+                x: node.bounds.x * sx + ox,
+                y: node.bounds.y * sy + oy,
+                w: node.bounds.w * sx,
+                h: node.bounds.h * sy
+            };
+            ctx.strokeStyle = node.clickable ? '#00ff88' : '#333';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(r.x, r.y, r.w, r.h);
+            if (node.text) {
+                ctx.fillStyle = '#fff';
+                ctx.font = `${Math.min(16, r.h*0.5)}px Arial`;
+                ctx.fillText(node.text.toString().slice(0,20), r.x, r.y-5);
+            }
+            node.children?.forEach(c => drawNode(c, ox, oy, sx, sy));
+        }
+
+        let dragStart = null;
+        canvas.addEventListener('touchstart', e => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const x = (e.touches[0].clientX - rect.left) * (1080/canvas.width);
+            const y = (e.touches[0].clientY - rect.top) * (1920/canvas.height);
+            dragStart = {x,y};
+        });
+        canvas.addEventListener('touchend', e => {
+            e.preventDefault();
+            if (!dragStart || !currentDevice) return;
+            const rect = canvas.getBoundingClientRect();
+            const x = (e.changedTouches[0].clientX - rect.left) * (1080/canvas.width);
+            const y = (e.changedTouches[0].clientY - rect.top) * (1920/canvas.height);
+            const dist = Math.hypot(x-dragStart.x, y-dragStart.y);
+            if (dist < 50) {
+                socket.emit('command', {deviceId: currentDevice, type: 'tap', x: dragStart.x, y: dragStart.y});
+            } else {
+                socket.emit('command', {deviceId: currentDevice, type: 'swipe', x1: dragStart.x, y1: dragStart.y, x2: x, y2: y});
+            }
+            dragStart = null;
+        });
+
+        function back() { socket.emit('command', {deviceId: currentDevice, type: 'back'}); }
+        function home() { socket.emit('command', {deviceId: currentDevice, type: 'home'}); }
+        function showDevices() {
+            document.getElementById('control').style.display = 'none';
+            document.getElementById('devices').style.display = 'block';
+            currentDevice = null;
+            loadDevices();
+        }
+
+        loadDevices();
+        setInterval(loadDevices, 10000);
+    </script>
+</body>
+</html>

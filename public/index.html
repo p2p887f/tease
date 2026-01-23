@@ -1,1 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Remote Control</title>
+    <style>
+        body { margin: 0; background: #000; }
+        #screen { max-width: 100vw; max-height: 100vh; image-rendering: pixelated; }
+        #controls { position: fixed; bottom: 20px; right: 20px; color: white; }
+        button { padding: 10px; margin: 5px; font-size: 16px; }
+    </style>
+</head>
+<body>
+    <canvas id="screen"></canvas>
+    <div id="controls">
+        <input id="deviceId" placeholder="Device ID" style="width: 150px;">
+        <button onclick="tap()">Tap</button>
+        <button onclick="swipe()">Swipe</button>
+    </div>
 
+    <script>
+        const ws = new WebSocket('ws://' + location.hostname + ':8080');
+        const canvas = document.getElementById('screen');
+        const ctx = canvas.getContext('2d');
+        const deviceIdInput = document.getElementById('deviceId');
+
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+            const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+            sendCommand('tap', x, y);
+        });
+
+        function sendCommand(action, x1, y1, x2, y2) {
+            const deviceId = deviceIdInput.value;
+            if (!deviceId) return alert('Enter Device ID');
+            
+            ws.send(JSON.stringify({
+                deviceId: deviceId,
+                action: action,
+                x: Math.round(x1), y: Math.round(y1),
+                x1: Math.round(x1), y1: Math.round(y1),
+                x2: Math.round(x2), y2: Math.round(y2)
+            }));
+        }
+
+        function tap() {
+            const rect = canvas.getBoundingClientRect();
+            const x = canvas.width / 2;
+            const y = canvas.height / 2;
+            sendCommand('tap', x, y);
+        }
+
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.type === 'screen') {
+                const img = new ImageData(
+                    new Uint8ClampedArray(atob(data.data), 0),
+                    1080, 1920 // Adjust to your screen size
+                );
+                canvas.width = img.width;
+                canvas.height = img.height;
+                ctx.putImageData(img, 0, 0);
+            }
+        };
+    </script>
+</body>
+</html>

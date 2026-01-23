@@ -1,54 +1,71 @@
-const WebSocket = require('ws');
 const express = require('express');
 const http = require('http');
+const WebSocket = require('ws');
 const path = require('path');
+const compression = require('compression');
 
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-const clients = new Map(); // deviceId -> ws
+app.use(compression());
+app.use(express.static(__dirname));
+app.use('/css', express.static(path.join(__dirname, 'style.css')));
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 
-app.use(express.static('public'));
+const devices = new Map();
+const deviceLayouts = new Map();
 
-wss.on('connection', (ws, req) => {
-    const url = new URL(req.url, `http://${req.headers.host}`);
-    const deviceId = url.searchParams.get('deviceId');
-    
-    if (deviceId) {
-        clients.set(deviceId, ws);
-        console.log(`✅ Device connected: ${deviceId}`);
-        
-        ws.on('message', (data) => {
-            // Broadcast screen data to browser
-            wss.clients.forEach(client => {
-                if (client.readyState === WebSocket.OPEN && client.deviceId !== deviceId) {
-                    client.send(JSON.stringify({
-                        type: 'screen',
-                        deviceId: deviceId,
-                        data: data.toString('base64')
-                    }));
+wss.on('connection', (ws) => {
+    ws.on('message', (message) => {
+        try {
+            const data = message.toString();
+            if (data.startsWith('REGISTER:')) {
+                const deviceId = data.split(':')[1];
+                devices.set(deviceId, ws);
+                console.log(`Device registered: ${deviceId}`);
+                ws.deviceId = deviceId;
+            } else {
+                const parsed = JSON.parse(data);
+                if (parsed.type === 'LAYOUT') {
+                    deviceLayouts.set(parsed.deviceId, parsed.layout);
+                    broadcastLayout(parsed.deviceId, parsed.layout);
                 }
-            });
-        });
-        
-        ws.on('close', () => {
-            clients.delete(deviceId);
-            console.log(`❌ Device disconnected: ${deviceId}`);
-        });
-    } else {
-        // Browser client
-        ws.deviceId = 'browser';
-        ws.on('message', (message) => {
-            const cmd = JSON.parse(message);
-            const targetDevice = clients.get(cmd.deviceId);
-            if (targetDevice && targetDevice.readyState === WebSocket.OPEN) {
-                targetDevice.send(JSON.stringify(cmd));
             }
-        });
-    }
+        } catch (e) {
+            console.error('Message error:', e);
+        }
+    });
+
+    ws.on('close', () => {
+        if (ws.deviceId) {
+            devices.delete(ws.deviceId);
+            deviceLayouts.delete(ws.deviceId);
+            console.log(`Device disconnected: ${ws.deviceId}`);
+        }
+    });
 });
 
+function broadcastLayout(deviceId, layout) {
+    // Broadcast to web clients
+    wss.clients.forEach(client => {
+        if (!client.deviceId && client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify({
+                type: 'LAYOUT_UPDATE',
+                deviceId,
+                layout: JSON.parse(layout)
+            }));
+        }
+    });
+}
+
+function sendControl(deviceId, action, params) {
+    const ws = devices.get(deviceId);
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ action, params }));
+    }
+}
+
 server.listen(8080, () => {
-    console.log('🚀 Server running on http://localhost:8080');
+    console.log('Server running on http://localhost:8080');
 });

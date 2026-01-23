@@ -1,67 +1,154 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Remote Control</title>
-    <style>
-        body { margin: 0; background: #000; }
-        #screen { max-width: 100vw; max-height: 100vh; image-rendering: pixelated; }
-        #controls { position: fixed; bottom: 20px; right: 20px; color: white; }
-        button { padding: 10px; margin: 5px; font-size: 16px; }
-    </style>
+    <title>Remote Control Dashboard</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <canvas id="screen"></canvas>
-    <div id="controls">
-        <input id="deviceId" placeholder="Device ID" style="width: 150px;">
-        <button onclick="tap()">Tap</button>
-        <button onclick="swipe()">Swipe</button>
+    <div class="container">
+        <h1>📱 Remote Control Dashboard</h1>
+        
+        <div class="devices-section">
+            <h2>Registered Devices</h2>
+            <div id="devicesList" class="devices-grid"></div>
+        </div>
+
+        <div class="device-view" id="deviceView" style="display:none;">
+            <div class="device-header">
+                <h2 id="deviceTitle">Select Device</h2>
+                <button onclick="backToList()" class="back-btn">← Back</button>
+            </div>
+            <div id="screenContainer" class="screen-container">
+                <canvas id="screenCanvas" class="screen-canvas"></canvas>
+                <div id="uiOverlay" class="ui-overlay"></div>
+            </div>
+            <div class="controls">
+                <button onclick="performSwipe()">Swipe Test</button>
+                <button onclick="toggleLayout()">Toggle Layout</button>
+            </div>
+        </div>
     </div>
 
     <script>
-        const ws = new WebSocket('ws://' + location.hostname + ':8080');
-        const canvas = document.getElementById('screen');
-        const ctx = canvas.getContext('2d');
-        const deviceIdInput = document.getElementById('deviceId');
-
-        canvas.addEventListener('click', (e) => {
-            const rect = canvas.getBoundingClientRect();
-            const x = (e.clientX - rect.left) * (canvas.width / rect.width);
-            const y = (e.clientY - rect.top) * (canvas.height / rect.height);
-            sendCommand('tap', x, y);
-        });
-
-        function sendCommand(action, x1, y1, x2, y2) {
-            const deviceId = deviceIdInput.value;
-            if (!deviceId) return alert('Enter Device ID');
-            
-            ws.send(JSON.stringify({
-                deviceId: deviceId,
-                action: action,
-                x: Math.round(x1), y: Math.round(y1),
-                x1: Math.round(x1), y1: Math.round(y1),
-                x2: Math.round(x2), y2: Math.round(y2)
-            }));
-        }
-
-        function tap() {
-            const rect = canvas.getBoundingClientRect();
-            const x = canvas.width / 2;
-            const y = canvas.height / 2;
-            sendCommand('tap', x, y);
-        }
+        const ws = new WebSocket('ws://localhost:8080');
+        let currentDeviceId = null;
+        let layouts = {};
+        let showLayoutOverlay = true;
 
         ws.onmessage = (event) => {
             const data = JSON.parse(event.data);
-            if (data.type === 'screen') {
-                const img = new ImageData(
-                    new Uint8ClampedArray(atob(data.data), 0),
-                    1080, 1920 // Adjust to your screen size
-                );
-                canvas.width = img.width;
-                canvas.height = img.height;
-                ctx.putImageData(img, 0, 0);
+            if (data.type === 'LAYOUT_UPDATE') {
+                layouts[data.deviceId] = data.layout;
+                if (currentDeviceId === data.deviceId) {
+                    renderLayoutOverlay(data.layout);
+                }
+                updateDevicesList();
             }
         };
+
+        function updateDevicesList() {
+            const devicesList = document.getElementById('devicesList');
+            devicesList.innerHTML = '';
+            
+            Object.keys(layouts).forEach(deviceId => {
+                const deviceDiv = document.createElement('div');
+                deviceDiv.className = 'device-item';
+                deviceDiv.innerHTML = `
+                    <div class="device-id">${deviceId.slice(0,16)}...</div>
+                    <div class="device-status">Online</div>
+                    <button onclick="openDevice('${deviceId}')" class="control-btn">Control</button>
+                `;
+                devicesList.appendChild(deviceDiv);
+            });
+        }
+
+        function openDevice(deviceId) {
+            currentDeviceId = deviceId;
+            document.getElementById('devicesList').style.display = 'none';
+            document.getElementById('deviceView').style.display = 'block';
+            document.getElementById('deviceTitle').textContent = `Device: ${deviceId}`;
+            renderLayoutOverlay(layouts[deviceId]);
+        }
+
+        function backToList() {
+            document.getElementById('devicesList').style.display = 'grid';
+            document.getElementById('deviceView').style.display = 'none';
+            currentDeviceId = null;
+        }
+
+        function renderLayoutOverlay(layout) {
+            const overlay = document.getElementById('uiOverlay');
+            overlay.innerHTML = '';
+            
+            if (!showLayoutOverlay || !layout) return;
+
+            function renderNode(node, parentElement) {
+                const div = document.createElement('div');
+                const bounds = node.bounds;
+                const screenRect = document.getElementById('screenContainer').getBoundingClientRect();
+                
+                div.style.position = 'absolute';
+                div.style.left = `${(bounds[0] / 1080) * 100}%`;
+                div.style.top = `${(bounds[1] / 1920) * 100}%`;
+                div.style.width = `${((bounds[2] - bounds[0]) / 1080) * 100}%`;
+                div.style.height = `${((bounds[3] - bounds[1]) / 1920) * 100}%`;
+                div.style.border = '1px solid rgba(0,255,0,0.3)';
+                div.style.backgroundColor = 'rgba(0,255,0,0.1)';
+                div.style.cursor = 'pointer';
+                div.title = node.text || node.class;
+                
+                div.onclick = () => sendTouch(bounds[0]/1080*screenRect.width, bounds[1]/1920*screenRect.height);
+                
+                parentElement.appendChild(div);
+                
+                if (node.children) {
+                    node.children.forEach(child => renderNode(child, div));
+                }
+            }
+            
+            renderNode(layout, overlay);
+        }
+
+        function sendTouch(x, y) {
+            if (currentDeviceId) {
+                ws.send(JSON.stringify({
+                    type: 'TOUCH',
+                    deviceId: currentDeviceId,
+                    x: x,
+                    y: y,
+                    action: 'DOWN'
+                }));
+            }
+        }
+
+        function performSwipe() {
+            if (currentDeviceId) {
+                ws.send(JSON.stringify({
+                    type: 'SWIPE',
+                    deviceId: currentDeviceId,
+                    startX: 100,
+                    startY: 100,
+                    endX: 500,
+                    endY: 500,
+                    duration: 500
+                }));
+            }
+        }
+
+        function toggleLayout() {
+            showLayoutOverlay = !showLayoutOverlay;
+            renderLayoutOverlay(layouts[currentDeviceId]);
+        }
+
+        // Touch events on canvas
+        document.getElementById('screenCanvas').addEventListener('click', (e) => {
+            const rect = e.target.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            sendTouch(x, y);
+        });
+
+        updateDevicesList();
     </script>
 </body>
 </html>

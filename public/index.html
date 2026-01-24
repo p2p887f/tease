@@ -96,137 +96,165 @@
         <button onclick="toggleFullScreen()">📱 Fullscreen</button>
     </div>
 
-    <script>
-        const socket = io();
-        let currentDevice = null;
-        let deviceWidth = 1080, deviceHeight = 1920;
+   <script>
+    const socket = io();
+    let currentDevice = null;
+    let deviceWidth = 1080, deviceHeight = 1920;
 
-        const canvas = document.getElementById('screen');
-        const ctx = canvas.getContext('2d');
-        const phoneFrame = document.getElementById('phone-frame');
-        const deviceList = document.getElementById('device-list');
-        const connectionStatus = document.getElementById('connectionStatus');
-        const selectedDevice = document.getElementById('selectedDevice');
+    const canvas = document.getElementById('screen');
+    const ctx = canvas.getContext('2d');
+    const phoneFrame = document.getElementById('phone-frame');
+    const deviceList = document.getElementById('device-list');
+    const connectionStatus = document.getElementById('connectionStatus');
+    const selectedDevice = document.getElementById('selectedDevice');
 
-        // Socket events
-        socket.on('connect', () => {
-            connectionStatus.textContent = 'Connected';
-            connectionStatus.style.color = '#00ff88';
-        });
+    // ✅ FIXED: Canvas sizing to match phone frame exactly
+    function resizeCanvas() {
+        const rect = phoneFrame.getBoundingClientRect();
+        canvas.width = rect.width;
+        canvas.height = rect.height;
+        canvas.style.width = rect.width + 'px';
+        canvas.style.height = rect.height + 'px';
+    }
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
 
-        socket.on('devices-update', (devices) => {
-            updateDeviceList(devices);
-        });
+    // Socket events
+    socket.on('connect', () => {
+        connectionStatus.textContent = 'Connected';
+        connectionStatus.style.color = '#00ff88';
+    });
 
-        socket.on('screen-update', (data) => {
-            if (data.deviceId === currentDevice) {
-                deviceWidth = data.width;
-                deviceHeight = data.height;
-                const img = new Image();
-                img.onload = () => {
-                    canvas.width = img.width;
-                    canvas.height = img.height;
-                    ctx.drawImage(img, 0, 0);
-                };
-                img.src = 'data:image/jpeg;base64,' + data.data;
-            }
-        });
+    socket.on('devices-update', (devices) => {
+        updateDeviceList(devices);
+    });
 
-        // Load initial devices
-        fetch('/devices').then(r => r.json()).then(updateDeviceList);
-
-        function updateDeviceList(devices) {
-            deviceList.innerHTML = devices.length ? 
-                devices.map(([id, info]) => `
-                    <div class="device ${!info.connected ? 'disconnected' : ''}" 
-                         onclick="selectDevice('${id}', this)">
-                        <b>${info.model || id.slice(0,8)}</b><br>
-                        <small>${info.brand} ${info.version || ''}</small>
-                        ${info.connected ? '🟢' : '🔴'}
-                    </div>
-                `).join('') : 'No devices connected';
-        }
-
-        function selectDevice(deviceId, el) {
-            currentDevice = deviceId;
-            selectedDevice.textContent = deviceId.slice(0,8);
-            document.querySelectorAll('.device').forEach(d => d.classList.remove('active'));
-            el.classList.add('active');
-            socket.emit('control', { deviceId }); // Join room
-        }
-
-        // Touch/Mouse controls
-        let startX = 0, startY = 0, dragging = false;
-
-        function getScaledCoords(clientX, clientY) {
-            const rect = phoneFrame.getBoundingClientRect();
-            const scaleX = deviceWidth / rect.width;
-            const scaleY = deviceHeight / rect.height;
-            return {
-                x: (clientX - rect.left) * scaleX,
-                y: (clientY - rect.top) * scaleY
+    // ✅ FIXED: Screen frame handling with proper scaling
+    socket.on('screen-update', (data) => {
+        if (data.deviceId === currentDevice && data.data) {
+            deviceWidth = data.width;
+            deviceHeight = data.height;
+            
+            const img = new Image();
+            img.onload = () => {
+                // ✅ FIXED: Scale image to fit canvas perfectly
+                const rect = phoneFrame.getBoundingClientRect();
+                const scaleX = rect.width / deviceWidth;
+                const scaleY = rect.height / deviceHeight;
+                const scale = Math.min(scaleX, scaleY);
+                
+                const drawWidth = deviceWidth * scale;
+                const drawHeight = deviceHeight * scale;
+                const offsetX = (rect.width - drawWidth) / 2;
+                const offsetY = (rect.height - drawHeight) / 2;
+                
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.imageSmoothingEnabled = true;
+                ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
+                
+                console.log(`✅ Frame drawn: ${deviceWidth}x${deviceHeight} -> ${drawWidth.toFixed(0)}x${drawHeight.toFixed(0)}`);
             };
+            img.onerror = () => console.error('Image load failed');
+            img.src = 'data:image/jpeg;base64,' + data.data;
         }
+    });
 
-        ['mousedown', 'touchstart'].forEach(event => {
-            phoneFrame.addEventListener(event, e => {
-                e.preventDefault();
-                dragging = true;
-                const coords = getScaledCoords(
-                    e.touches?.[0]?.clientX || e.clientX,
-                    e.touches?.[0]?.clientY || e.clientY
-                );
-                startX = coords.x;
-                startY = coords.y;
-                sendTap(startX, startY);
-            });
+    // Load initial devices
+    fetch('/devices').then(r => r.json()).then(updateDeviceList);
+
+    function updateDeviceList(devices) {
+        deviceList.innerHTML = devices.length ? 
+            devices.map(([id, info]) => `
+                <div class="device ${!info.connected ? 'disconnected' : ''}" 
+                     onclick="selectDevice('${id}', this)">
+                    <b>${info.model || id.slice(0,8)}</b><br>
+                    <small>${info.brand} ${info.version || ''}</small>
+                    ${info.connected ? '🟢' : '🔴'}
+                </div>
+            `).join('') : 'No devices connected';
+    }
+
+    function selectDevice(deviceId, el) {
+        currentDevice = deviceId;
+        selectedDevice.textContent = deviceId.slice(0,8);
+        document.querySelectorAll('.device').forEach(d => d.classList.remove('active'));
+        el.classList.add('active');
+        socket.emit('control', { deviceId }); 
+        resizeCanvas();
+    }
+
+    // Touch/Mouse controls (UNCHANGED - already working)
+    let startX = 0, startY = 0, dragging = false;
+
+    function getScaledCoords(clientX, clientY) {
+        const rect = phoneFrame.getBoundingClientRect();
+        const scaleX = deviceWidth / rect.width;
+        const scaleY = deviceHeight / rect.height;
+        return {
+            x: (clientX - rect.left) * scaleX,
+            y: (clientY - rect.top) * scaleY
+        };
+    }
+
+    ['mousedown', 'touchstart'].forEach(event => {
+        phoneFrame.addEventListener(event, e => {
+            e.preventDefault();
+            dragging = true;
+            const coords = getScaledCoords(
+                e.touches?.[0]?.clientX || e.clientX,
+                e.touches?.[0]?.clientY || e.clientY
+            );
+            startX = coords.x;
+            startY = coords.y;
+            sendTap(startX, startY);
         });
+    });
 
-        ['mousemove', 'touchmove'].forEach(event => {
-            phoneFrame.addEventListener(event, e => {
-                if (!dragging || !currentDevice) return;
-                e.preventDefault();
-                const coords = getScaledCoords(
-                    e.touches?.[0]?.clientX || e.clientX,
-                    e.touches?.[0]?.clientY || e.clientY
-                );
-                sendSwipe(startX, startY, coords.x, coords.y);
-            });
+    ['mousemove', 'touchmove'].forEach(event => {
+        phoneFrame.addEventListener(event, e => {
+            if (!dragging || !currentDevice) return;
+            e.preventDefault();
+            const coords = getScaledCoords(
+                e.touches?.[0]?.clientX || e.clientX,
+                e.touches?.[0]?.clientY || e.clientY
+            );
+            sendSwipe(startX, startY, coords.x, coords.y);
         });
+    });
 
-        ['mouseup', 'touchend'].forEach(event => {
-            phoneFrame.addEventListener(event, e => {
-                dragging = false;
-            });
+    ['mouseup', 'touchend'].forEach(event => {
+        phoneFrame.addEventListener(event, e => {
+            dragging = false;
         });
+    });
 
-        function sendTap(x, y) {
-            if (!currentDevice) return;
-            socket.emit('control', { deviceId: currentDevice, action: 'tap', x, y });
-        }
+    function sendTap(x, y) {
+        if (!currentDevice) return;
+        socket.emit('control', { deviceId: currentDevice, action: 'tap', x, y });
+    }
 
-        function sendSwipe(sx, sy, ex, ey) {
-            if (!currentDevice) return;
-            socket.emit('control', { 
-                deviceId: currentDevice, 
-                action: 'swipe', 
-                startX: sx, startY: sy, 
-                endX: ex, endY: ey 
-            });
-        }
+    function sendSwipe(sx, sy, ex, ey) {
+        if (!currentDevice) return;
+        socket.emit('control', { 
+            deviceId: currentDevice, 
+            action: 'swipe', 
+            startX: sx, startY: sy, 
+            endX: ex, endY: ey 
+        });
+    }
 
-        function sendBack() {
-            if (!currentDevice) return;
-            socket.emit('control', { deviceId: currentDevice, action: 'back' });
-        }
+    function sendBack() {
+        if (!currentDevice) return;
+        socket.emit('control', { deviceId: currentDevice, action: 'back' });
+    }
 
-        function toggleFullScreen() {
-            if (!document.fullscreenElement) {
-                document.documentElement.requestFullscreen();
-            } else {
-                document.exitFullscreen();
-            }
+    function toggleFullScreen() {
+        if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen();
+        } else {
+            document.exitFullscreen();
         }
-    </script>
+    }
+</script>
 </body>
 </html>

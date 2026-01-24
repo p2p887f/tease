@@ -108,7 +108,7 @@
     const connectionStatus = document.getElementById('connectionStatus');
     const selectedDevice = document.getElementById('selectedDevice');
 
-    // ✅ FIXED: Canvas resize to match phone frame
+    // ✅ FIXED: Perfect canvas scaling
     function resizeCanvas() {
         const rect = phoneFrame.getBoundingClientRect();
         canvas.width = rect.width;
@@ -128,7 +128,7 @@
         updateDeviceList(devices);
     });
 
-    // ✅ FIXED: PROPER SCREEN RENDERING
+    // ✅ FIXED: CORRECT EVENT NAME + PERFECT RENDERING
     socket.on('screen-frame', (data) => {
         if (data.deviceId === currentDevice && data.data) {
             deviceWidth = data.width;
@@ -136,7 +136,7 @@
             
             const img = new Image();
             img.onload = () => {
-                // ✅ PERFECT SCALING
+                // ✅ PERFECT SCALING INSIDE PHONE FRAME
                 const rect = phoneFrame.getBoundingClientRect();
                 const scaleX = rect.width / deviceWidth;
                 const scaleY = rect.height / deviceHeight;
@@ -151,19 +151,13 @@
                 ctx.imageSmoothingEnabled = true;
                 ctx.imageSmoothingQuality = 'high';
                 ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
-                
-                console.log(`✅ Screen rendered: ${deviceWidth}x${deviceHeight}`);
             };
             
-            img.onerror = (e) => {
-                console.error('Image error:', e);
-            };
-            
+            img.onerror = () => console.error('Image load failed');
             img.src = 'data:image/jpeg;base64,' + data.data;
         }
     });
 
-    // Initial devices
     fetch('/devices').then(r => r.json()).then(updateDeviceList);
 
     function updateDeviceList(devices) {
@@ -227,9 +221,7 @@
     });
 
     ['mouseup', 'touchend'].forEach(event => {
-        phoneFrame.addEventListener(event, e => {
-            dragging = false;
-        });
+        phoneFrame.addEventListener(event, e => dragging = false);
     });
 
     function sendTap(x, y) {

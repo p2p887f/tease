@@ -96,7 +96,7 @@
         <button onclick="toggleFullScreen()">📱 Fullscreen</button>
     </div>
 
-   <script>
+  <script>
     const socket = io();
     let currentDevice = null;
     let deviceWidth = 1080, deviceHeight = 1920;
@@ -108,7 +108,7 @@
     const connectionStatus = document.getElementById('connectionStatus');
     const selectedDevice = document.getElementById('selectedDevice');
 
-    // ✅ FIXED: Canvas sizing to match phone frame exactly
+    // ✅ FIXED: Canvas resize to match phone frame
     function resizeCanvas() {
         const rect = phoneFrame.getBoundingClientRect();
         canvas.width = rect.width;
@@ -119,9 +119,8 @@
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
 
-    // Socket events
     socket.on('connect', () => {
-        connectionStatus.textContent = 'Connected';
+        connectionStatus.textContent = 'Connected ✅';
         connectionStatus.style.color = '#00ff88';
     });
 
@@ -129,15 +128,15 @@
         updateDeviceList(devices);
     });
 
-    // ✅ FIXED: Screen frame handling with proper scaling
-    socket.on('screen-update', (data) => {
+    // ✅ FIXED: PROPER SCREEN RENDERING
+    socket.on('screen-frame', (data) => {
         if (data.deviceId === currentDevice && data.data) {
             deviceWidth = data.width;
             deviceHeight = data.height;
             
             const img = new Image();
             img.onload = () => {
-                // ✅ FIXED: Scale image to fit canvas perfectly
+                // ✅ PERFECT SCALING
                 const rect = phoneFrame.getBoundingClientRect();
                 const scaleX = rect.width / deviceWidth;
                 const scaleY = rect.height / deviceHeight;
@@ -150,16 +149,21 @@
                 
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
                 ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
                 
-                console.log(`✅ Frame drawn: ${deviceWidth}x${deviceHeight} -> ${drawWidth.toFixed(0)}x${drawHeight.toFixed(0)}`);
+                console.log(`✅ Screen rendered: ${deviceWidth}x${deviceHeight}`);
             };
-            img.onerror = () => console.error('Image load failed');
+            
+            img.onerror = (e) => {
+                console.error('Image error:', e);
+            };
+            
             img.src = 'data:image/jpeg;base64,' + data.data;
         }
     });
 
-    // Load initial devices
+    // Initial devices
     fetch('/devices').then(r => r.json()).then(updateDeviceList);
 
     function updateDeviceList(devices) {
@@ -168,8 +172,8 @@
                 <div class="device ${!info.connected ? 'disconnected' : ''}" 
                      onclick="selectDevice('${id}', this)">
                     <b>${info.model || id.slice(0,8)}</b><br>
-                    <small>${info.brand} ${info.version || ''}</small>
-                    ${info.connected ? '🟢' : '🔴'}
+                    <small>${info.brand || ''} ${info.version || ''}</small>
+                    ${info.connected ? '🟢 LIVE' : '🔴 OFF'}
                 </div>
             `).join('') : 'No devices connected';
     }
@@ -179,11 +183,11 @@
         selectedDevice.textContent = deviceId.slice(0,8);
         document.querySelectorAll('.device').forEach(d => d.classList.remove('active'));
         el.classList.add('active');
-        socket.emit('control', { deviceId }); 
+        socket.emit('control', { deviceId });
         resizeCanvas();
     }
 
-    // Touch/Mouse controls (UNCHANGED - already working)
+    // Touch/Mouse Controls (ALREADY WORKING)
     let startX = 0, startY = 0, dragging = false;
 
     function getScaledCoords(clientX, clientY) {

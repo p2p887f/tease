@@ -14,14 +14,14 @@
         #devices {
             position: fixed; top: 10px; left: 10px; 
             background: rgba(0,0,0,0.9); padding: 15px; 
-            max-height: 80vh; overflow-y: auto; width: 250px; 
+            max-height: 80vh; overflow-y: auto; width: 280px; 
             border-radius: 10px; backdrop-filter: blur(10px);
         }
         .device { padding: 12px; margin: 8px 0; background: #333; cursor: pointer; 
-            border-radius: 8px; transition: all 0.3s; }
-        .device:hover { background: #555; transform: translateX(5px); }
-        .active { background: #00ff88 !important; color: #000; }
-        .disconnected { opacity: 0.5; }
+            border-radius: 8px; transition: all 0.3s; border-left: 4px solid #555; }
+        .device:hover { background: #444; transform: translateX(5px); }
+        .active { background: #00ff88 !important; color: #000; border-left-color: #00ff88; }
+        .disconnected { opacity: 0.5; border-left-color: #ff4444; }
 
         #phone-frame {
             width: 400px; height: 850px; margin: 20px auto; 
@@ -31,12 +31,12 @@
         }
         #screen { 
             width: 100%; height: 100%; background: #111; border-radius: 20px;
-            image-rendering: -webkit-optimize-contrast; image-rendering: crisp-edges;
+            image-rendering: pixelated; image-rendering: crisp-edges;
         }
-        #fps-counter { position: fixed; top: 10px; right: 150px; font-size: 14px; 
-            color: #00ff88; font-weight: bold; }
-        #status { position: fixed; top: 10px; right: 10px; background: rgba(0,0,0,0.8); 
-            padding: 12px; border-radius: 8px; font-size: 13px; }
+        #fps-counter { position: fixed; top: 10px; right: 150px; 
+            font-size: 14px; font-weight: bold; color: #00ff88; }
+        #status { position: fixed; top: 10px; right: 10px; 
+            background: rgba(0,0,0,0.8); padding: 12px; border-radius: 8px; font-size: 13px; }
         #controls { text-align: center; position: fixed; bottom: 20px; 
             left: 50%; transform: translateX(-50%); }
         button {
@@ -47,16 +47,17 @@
         }
         button:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(0,123,255,0.6); }
         button:active { transform: translateY(0); }
+        .loading { color: #ffaa00; }
     </style>
 </head>
 <body>
     <div id="devices">
         <h3>📱 Online Devices</h3>
-        <div id="device-list">Connecting...</div>
+        <div id="device-list">🔄 Connecting...</div>
     </div>
     
     <div id="status">
-        <div>Status: <span id="connectionStatus">🔄</span></div>
+        <div>Status: <span id="connectionStatus" class="loading">🔄</span></div>
         <div>FPS: <span id="fps">0</span> | <span id="selectedDevice">-</span></div>
     </div>
     <div id="fps-counter">FPS: 0</div>
@@ -71,11 +72,11 @@
     </div>
 
     <script>
-        const socket = io({ transports: ['websocket'], upgrade: false });
+        const socket = io({ transports: ['websocket'] });
         let currentDevice = null;
         let deviceWidth = 1080, deviceHeight = 2400;
         let lastFrameTime = 0, frameCount = 0;
-        let frameQueue = []; // 🔥 FRAME BUFFER - NO BLACK SCREEN!
+        let frameQueue = []; // 🔥 5 FRAME BUFFER - NO DROPS!
         
         const canvas = document.getElementById('screen');
         const ctx = canvas.getContext('2d');
@@ -86,33 +87,37 @@
         const fpsCounter = document.getElementById('fps-counter');
         const fpsDisplay = document.getElementById('fps');
 
-        // 🔥 PERFECT SOCKET HANDLING
+        // 🔥 SOCKET EVENTS
         socket.on('connect', () => {
             connectionStatus.textContent = '🟢 LIVE';
             connectionStatus.style.color = '#00ff88';
-            console.log('🌐 Server connected');
+            console.log('🌐 Connected to server');
         });
 
         socket.on('devices-update', (devices) => {
             updateDeviceList(devices);
         });
 
-        // 🔥 ULTRA FAST LIVE RENDERING - FRAME BUFFER!
+        // 🔥 PERFECT FRAME HANDLING WITH BUFFER
         socket.on('screen-update', (data) => {
             if (data.deviceId !== currentDevice) return;
             
-            // 🔥 Add to queue (always latest frames)
+            // 🔥 ADD TO BUFFER (always keep latest 5 frames)
             frameQueue.push(data);
-            if (frameQueue.length > 5) frameQueue.shift(); // Keep 5 latest
+            if (frameQueue.length > 5) frameQueue.shift();
             
-            renderFrame();
+            renderLatestFrame();
         });
 
         // 🔥 RENDER LATEST FRAME IMMEDIATELY
-        function renderFrame() {
+        function renderLatestFrame() {
             if (frameQueue.length === 0) {
                 ctx.fillStyle = '#111';
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#666';
+                ctx.font = '24px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('Waiting for frames...', canvas.width/2, canvas.height/2);
                 return;
             }
             
@@ -128,12 +133,12 @@
                     canvas.width = rect.width;
                     canvas.height = rect.height;
                     
-                    // 🔥 CRISP RENDERING
+                    // 🔥 ULTRA CRISP RENDERING
                     ctx.imageSmoothingEnabled = false;
                     ctx.clearRect(0, 0, canvas.width, canvas.height);
                     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                     
-                    // 🔥 FPS COUNTER
+                    // 🔥 FPS CALCULATION
                     frameCount++;
                     const now = performance.now();
                     if (now - lastFrameTime >= 1000) {
@@ -146,7 +151,7 @@
                 };
                 
                 img.onerror = () => {
-                    console.error('Image failed');
+                    console.error('❌ Image decode failed');
                     ctx.fillStyle = '#222';
                     ctx.fillRect(0, 0, canvas.width, canvas.height);
                 };
@@ -158,14 +163,13 @@
             }
         }
 
-        // 🔥 AUTO REFRESH EVERY 100ms
-        setInterval(renderFrame, 100);
+        // 🔥 CONTINUOUS RENDERING LOOP (33ms = 30FPS)
+        setInterval(renderLatestFrame, 33);
 
-        // 🔥 Load devices
-        fetch('/devices')
-            .then(r => r.json())
-            .then(updateDeviceList)
-            .catch(() => deviceList.innerHTML = '🔄 Server loading...');
+        // 🔥 LOAD DEVICES
+        fetch('/devices').then(r => r.json()).then(updateDeviceList).catch(() => {
+            deviceList.innerHTML = '<div style="color:#ffaa00">🔄 Server connecting...</div>';
+        });
 
         function updateDeviceList(devices) {
             deviceList.innerHTML = devices.length ? 
@@ -177,8 +181,9 @@
                         <small style="color: ${info.connected ? '#00ff88' : '#ff4444'}">
                             ${info.connected ? '🟢 LIVE' : '🔴 OFFLINE'}
                         </small>
+                        ${info.width ? `<br><small>${info.width}x${info.height}</small>` : ''}
                     </div>
-                `).join('') : '<div>No devices online</div>';
+                `).join('') : '<div style="color:#ffaa00">No devices online</div>';
         }
 
         window.selectDevice = function(deviceId, el) {
@@ -186,11 +191,12 @@
             selectedDeviceSpan.textContent = deviceId.slice(0,8);
             document.querySelectorAll('.device').forEach(d => d.classList.remove('active'));
             el.classList.add('active');
-            frameQueue = []; // 🔥 Clear buffer
-            console.log('🎬 LIVE SELECTED:', deviceId);
+            frameQueue = []; // 🔥 Clear buffer for new device
+            console.log('📱 LIVE SELECTED:', deviceId);
+            renderLatestFrame();
         }
 
-        // 🔥 PERFECT TOUCH/MOUSE CONTROLS (Already working)
+        // 🔥 PERFECT TOUCH/MOUSE CONTROLS
         let startX = 0, startY = 0, isDragging = false;
 
         function getDeviceCoords(clientX, clientY) {
@@ -203,7 +209,7 @@
             };
         }
 
-        // Mouse
+        // Mouse events
         phoneFrame.addEventListener('mousedown', e => {
             e.preventDefault();
             isDragging = true;
@@ -220,8 +226,9 @@
         });
 
         phoneFrame.addEventListener('mouseup', () => isDragging = false);
+        phoneFrame.addEventListener('mouseleave', () => isDragging = false);
 
-        // Touch
+        // Touch events
         phoneFrame.addEventListener('touchstart', e => {
             e.preventDefault();
             isDragging = true;
@@ -240,6 +247,7 @@
         }, { passive: false });
 
         phoneFrame.addEventListener('touchend', () => isDragging = false);
+        phoneFrame.addEventListener('touchcancel', () => isDragging = false);
 
         function sendTap(x, y) {
             if (!currentDevice) return;
@@ -248,6 +256,7 @@
                 action: 'tap', 
                 x, y 
             });
+            console.log('👆 Tap:', x, y);
         }
 
         function sendSwipe(sx, sy, ex, ey) {
@@ -266,6 +275,7 @@
                 deviceId: currentDevice, 
                 action: 'back' 
             });
+            console.log('🔙 Back pressed');
         }
 
         window.toggleFullScreen = function() {
@@ -276,8 +286,8 @@
             }
         }
 
-        // 🔥 Auto-resize on window change
-        window.addEventListener('resize', renderFrame);
+        // 🔥 RESPONSIVE RESIZE
+        window.addEventListener('resize', renderLatestFrame);
     </script>
 </body>
 </html>

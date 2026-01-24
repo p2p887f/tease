@@ -18,13 +18,17 @@ app.use(express.json());
 // Store connected devices
 const devices = new Map();
 
-app.get('/register', (req, res) => {
-    const { deviceId, model, version } = req.body;
+app.post('/register', (req, res) => {
+    const { deviceId, model, brand, version, status } = req.body;
+
     if (deviceId) {
-        devices.set(deviceId, { model, version, status: 'online' });
+        devices.set(deviceId, { model, brand, version, status });
+        console.log("Device registered:", deviceId);
     }
+
     res.json({ success: true });
 });
+
 
 app.get('/devices', (req, res) => {
     res.json(Array.from(devices.entries()));

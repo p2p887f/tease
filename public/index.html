@@ -42,134 +42,37 @@
         <button onclick="toggleFullScreen()">Fullscreen</button>
     </div>
 
-    <script>
-        const socket = io();
-        let currentDevice = null;
-        const screenCanvas = document.getElementById('screen');
-        const ctx = screenCanvas.getContext('2d');
-        const phoneFrame = document.getElementById('phone-frame');
+   <script>
+const ws = new WebSocket(`ws://${location.host}?role=panel`);
+let currentDevice = null;
 
-        // Load devices
-        fetch('/devices').then(r => r.json()).then(devices => {
-            updateDeviceList(devices);
-        });
+const canvas = document.getElementById('screen');
+const ctx = canvas.getContext('2d');
 
-        socket.on('connect', () => {
-            console.log('Connected to server');
-        });
+ws.onmessage = e => {
+  const d = JSON.parse(e.data);
+  if (d.type === 'screen' && d.deviceId === currentDevice) {
+    const img = new Image();
+    img.onload = () => {
+      canvas.width = img.width;
+      canvas.height = img.height;
+      ctx.drawImage(img, 0, 0);
+    };
+    img.src = 'data:image/jpeg;base64,' + d.data;
+  }
+};
 
-        // Device selection
-        function updateDeviceList(devices) {
-            const list = document.getElementById('device-list');
-            list.innerHTML = '';
-            devices.forEach(([id, info]) => {
-                const div = document.createElement('div');
-                div.className = 'device';
-                div.innerHTML = `${info.model || id}<br><small>${info.version}</small>`;
-                div.onclick = () => selectDevice(id);
-                list.appendChild(div);
-            });
-        }
+function sendTap(x,y){
+  ws.send(JSON.stringify({ action:'tap', deviceId:currentDevice, x,y }));
+}
+function sendSwipe(sx,sy,ex,ey){
+  ws.send(JSON.stringify({ action:'swipe', deviceId:currentDevice,
+    startX:sx,startY:sy,endX:ex,endY:ey }));
+}
+function sendBack(){
+  ws.send(JSON.stringify({ action:'back', deviceId:currentDevice }));
+}
+</script>
 
-        function selectDevice(deviceId) {
-            currentDevice = deviceId;
-            document.querySelectorAll('.device').forEach(d => d.classList.remove('active'));
-            event.target.classList.add('active');
-            
-            socket.emit('select-device', deviceId);
-        }
-
-        // Touch controls - EXACT VIDEO MATCH
-        let isDragging = false;
-        let startX, startY;
-
-        phoneFrame.addEventListener('mousedown', (e) => {
-            isDragging = true;
-            startX = e.offsetX;
-            startY = e.offsetY;
-            sendTap(e.offsetX, e.offsetY);
-        });
-
-        phoneFrame.addEventListener('mousemove', (e) => {
-            if (isDragging) {
-                // Send swipe
-                socket.emit('swipe', {
-                    deviceId: currentDevice,
-                    startX, startY,
-                    endX: e.offsetX,
-                    endY: e.offsetY
-                });
-            }
-        });
-
-        phoneFrame.addEventListener('mouseup', (e) => {
-            if (isDragging) {
-                socket.emit('swipe', {
-                    deviceId: currentDevice,
-                    startX, startY,
-                    endX: e.offsetX,
-                    endY: e.offsetY
-                });
-                isDragging = false;
-            }
-        });
-
-        // Touch support
-        phoneFrame.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            const touch = e.touches[0];
-            const rect = phoneFrame.getBoundingClientRect();
-            const x = touch.clientX - rect.left;
-            const y = touch.clientY - rect.top;
-            sendTap(x, y);
-        });
-
-        phoneFrame.addEventListener('touchmove', (e) => {
-            e.preventDefault();
-        });
-
-        function sendTap(x, y) {
-            if (currentDevice) {
-                socket.emit('tap', {
-                    deviceId: currentDevice,
-                    x, y
-                });
-            }
-        }
-
-        function sendBack() {
-            if (currentDevice) {
-                socket.emit('back', { deviceId: currentDevice });
-            }
-        }
-
-        function sendHome() {
-            if (currentDevice) {
-                socket.emit('tap', { 
-                    deviceId: currentDevice, 
-                    x: 100, y: 1800 // Home button position
-                });
-            }
-        }
-
-        function toggleFullScreen() {
-            if (!document.fullscreenElement) {
-                document.documentElement.requestFullscreen();
-            } else {
-                document.exitFullscreen();
-            }
-        }
-
-        // Screen updates (30FPS)
-        socket.on('screen-update', (data) => {
-            if (currentDevice === data.deviceId) {
-                const img = new ImageData(
-                    new Uint8ClampedArray(data.data), 
-                    data.width, data.height
-                );
-                ctx.putImageData(img, 0, 0);
-            }
-        });
-    </script>
 </body>
 </html>

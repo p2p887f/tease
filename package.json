@@ -1,13 +1,13 @@
 {
-  "name": "remote-control-server",
-  "version": "1.0.0",
+  "name": "spynote-server",
+  "version": "7.3.1",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "ws": "^8.14.2",
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5",
     "compression": "^1.7.4"
   }
 }

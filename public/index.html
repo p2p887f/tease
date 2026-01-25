@@ -1,205 +1,294 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Android Layout Spy</title>
+    <title>📱 Layout Spy Control Panel</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="/socket.io/socket.io.js"></script>
     <style>
-        body { margin: 0; font-family: Arial; background: #1a1a1a; color: white; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
+            background: linear-gradient(135deg, #0f0f23, #1a1a2e); 
+            color: white; height: 100vh; overflow: hidden;
+        }
+        #devices {
+            position: fixed; top: 15px; left: 15px; 
+            background: rgba(0,0,0,0.85); padding: 20px; 
+            max-height: 75vh; overflow-y: auto; width: 280px; 
+            border-radius: 15px; backdrop-filter: blur(20px); border: 1px solid #333;
+        }
+        .device { 
+            padding: 15px; margin: 10px 0; background: #2a2a3a; 
+            cursor: pointer; border-radius: 10px; transition: all 0.3s; 
+            border: 2px solid transparent;
+        }
+        .device:hover { background: #3a3a4a; transform: translateX(5px); border-color: #00ff88; }
+        .active { background: linear-gradient(45deg, #00ff88, #00cc66) !important; 
+                  color: #000; border-color: #00ff88 !important; box-shadow: 0 0 20px #00ff88; }
+        .disconnected { opacity: 0.4; }
+
+        #phone-frame {
+            width: 420px; height: 900px; margin: 30px auto; 
+            background: linear-gradient(145deg, #1a1a1a, #0d0d0d); 
+            border: 30px solid #222; border-radius: 60px; 
+            position: relative; cursor: pointer; touch-action: none;
+            box-shadow: 0 30px 60px rgba(0,0,0,0.7), inset 0 0 20px rgba(255,255,255,0.05);
+        }
         #screen { 
-            width: 100vw; 
-            height: 100vh; 
-            position: relative; 
-            background: #000; 
-            overflow: hidden;
-            cursor: pointer;
+            width: 100%; height: 100%; border-radius: 40px;
+            image-rendering: crisp-edges; image-rendering: pixelated;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
         }
-        .element {
-            position: absolute;
-            border: 1px solid rgba(255,255,255,0.3);
-            background: rgba(0,255,0,0.1);
-            cursor: pointer;
-            font-size: 10px;
-            padding: 2px;
-            box-sizing: border-box;
-            transition: all 0.2s;
-        }
-        .element:hover {
-            background: rgba(0,255,255,0.3) !important;
-            border-color: #00ffff;
-            z-index: 1000;
-        }
-        .element.clickable { 
-            border-color: #ff4444 !important; 
-            background: rgba(255,68,68,0.2);
-        }
-        .element.button { background: rgba(255,165,0,0.3); }
-        .element.text { background: rgba(0,255,0,0.2); }
-        .element.scrollable { border-style: dashed; }
-        .info-panel {
-            position: fixed;
-            top: 10px;
-            right: 10px;
-            background: rgba(0,0,0,0.8);
-            padding: 10px;
-            border-radius: 5px;
-            font-size: 12px;
-        }
+        #fps-counter { position: fixed; top: 15px; right: 160px; 
+            font-size: 14px; color: #00ff88; font-weight: bold; }
+        #status { position: fixed; top: 15px; right: 15px; 
+            background: rgba(0,0,0,0.9); padding: 15px; border-radius: 10px; 
+            font-size: 13px; backdrop-filter: blur(10px); }
         #controls { 
-            position: fixed; 
-            bottom: 10px; 
-            left: 10px; 
-            background: rgba(0,0,0,0.8);
-            padding: 10px;
-            border-radius: 5px;
+            text-align: center; position: fixed; bottom: 25px; 
+            left: 50%; transform: translateX(-50%); 
         }
-        button { 
-            background: #007acc; 
-            color: white; 
-            border: none; 
-            padding: 8px 16px; 
-            margin: 2px; 
-            border-radius: 4px; 
-            cursor: pointer;
+        button {
+            padding: 18px 35px; margin: 0 12px; 
+            background: linear-gradient(45deg, #667eea 0%, #764ba2 100%); 
+            color: white; border: none; border-radius: 30px; cursor: pointer; 
+            font-size: 16px; font-weight: bold; transition: all 0.3s;
+            box-shadow: 0 8px 25px rgba(102,126,234,0.4);
+            text-transform: uppercase; letter-spacing: 1px;
         }
-        button:hover { background: #005a99; }
+        button:hover { 
+            transform: translateY(-3px); 
+            box-shadow: 0 12px 35px rgba(102,126,234,0.6); 
+        }
+        button:active { transform: translateY(-1px); }
+        .status-indicator {
+            display: inline-block; width: 10px; height: 10px; 
+            border-radius: 50%; margin-right: 8px;
+        }
+        .live { background: #00ff88; }
+        .layout { background: #ffaa00; }
     </style>
 </head>
 <body>
-    <div id="screen"></div>
-    <div class="info-panel">
-        <div id="deviceInfo">Waiting for device...</div>
-        <div id="stats">Elements: 0</div>
+    <div id="devices">
+        <h3 style="margin-bottom: 15px; color: #00ff88;">📱 Layout Spy Devices</h3>
+        <div id="device-list">Loading devices...</div>
     </div>
-    <div id="controls">
-        <button onclick="performBack()">← Back</button>
-        <button onclick="toggleHighlight()">Highlight</button>
-        <span id="mousePos">X:0 Y:0</span>
+    
+    <div id="status">
+        <div>Status: <span id="connectionStatus">Connecting...</span></div>
+        <div><span id="typeIndicator" class="status-indicator"></span>
+            <span id="modeText">Mode: </span>
+            FPS: <span id="fps">0</span> | 
+            Device: <span id="selectedDevice">-</span>
+        </div>
+    </div>
+    
+    <div id="fps-counter">Layout FPS: 0</div>
+
+    <div id="phone-frame">
+        <canvas id="screen"></canvas>
     </div>
 
-    <script src="/socket.io/socket.io.js"></script>
+    <div id="controls">
+        <button onclick="sendBack()">🔙 Back</button>
+        <button onclick="toggleFullScreen()">📱 Fullscreen</button>
+    </div>
+
     <script>
         const socket = io();
-        const screen = document.getElementById('screen');
-        const deviceInfo = document.getElementById('deviceInfo');
-        const stats = document.getElementById('stats');
-        const mousePos = document.getElementById('mousePos');
-        
-        let elements = [];
-        let screenScale = 1;
-        let highlightMode = false;
-        let selectedElement = null;
+        let currentDevice = null;
+        let deviceWidth = 1080, deviceHeight = 2340;
+        let lastFrameTime = 0, frameCount = 0;
 
-        // Screen resize
-        function updateScreenScale() {
-            const aspect = window.innerWidth / window.innerHeight;
-            screenScale = Math.min(window.innerWidth / 1080, window.innerHeight / 1920);
-            screen.style.transform = `scale(${screenScale})`;
-            screen.style.transformOrigin = 'top left';
-        }
-        window.addEventListener('resize', updateScreenScale);
-        updateScreenScale();
+        const canvas = document.getElementById('screen');
+        const ctx = canvas.getContext('2d');
+        const phoneFrame = document.getElementById('phone-frame');
+        const deviceList = document.getElementById('device-list');
+        const connectionStatus = document.getElementById('connectionStatus');
+        const selectedDevice = document.getElementById('selectedDevice');
+        const fpsCounter = document.getElementById('fps-counter');
+        const fpsDisplay = document.getElementById('fps');
+        const typeIndicator = document.getElementById('typeIndicator');
+        const modeText = document.getElementById('modeText');
 
-        // Mouse position tracking
-        screen.addEventListener('mousemove', (e) => {
-            const rect = screen.getBoundingClientRect();
-            const x = (e.clientX - rect.left) / screenScale;
-            const y = (e.clientY - rect.top) / screenScale;
-            mousePos.textContent = `X:${Math.round(x)} Y:${Math.round(y)}`;
+        // Socket events
+        socket.on('connect', () => {
+            connectionStatus.textContent = '✅ Connected';
+            connectionStatus.style.color = '#00ff88';
         });
 
-        // Layout rendering
-        socket.on('layout-update', (data) => {
-            deviceInfo.innerHTML = `📱 ${data.deviceId}<br>Screen: ${data.screen.width}x${data.screen.height}`;
-            stats.textContent = `Elements: ${data.elements.length}`;
+        socket.on('devices-update', (devices) => {
+            updateDeviceList(devices);
+        });
+
+        // 🔥 PERFECT LAYOUT RENDERING
+        socket.on('screen-frame', (data) => {
+            if (data.deviceId !== currentDevice) return;
             
-            // Clear previous elements
-            elements.forEach(el => el.remove());
-            elements = [];
-            
-            // Render new elements
-            data.elements.forEach((el, index) => {
-                const div = document.createElement('div');
-                const bounds = el.bounds;
+            try {
+                deviceWidth = data.width || 1080;
+                deviceHeight = data.height || 2340;
                 
-                // Scale coordinates
-                div.style.left = `${bounds[0] * screenScale}px`;
-                div.style.top = `${bounds[1] * screenScale}px`;
-                div.style.width = `${(bounds[2] - bounds[0]) * screenScale}px`;
-                div.style.height = `${(bounds[3] - bounds[1]) * screenScale}px`;
-                
-                // Classes and styles
-                div.className = 'element';
-                if (el.clickable) div.classList.add('clickable');
-                if (el.className?.includes('Button')) div.classList.add('button');
-                if (el.scrollable) div.classList.add('scrollable');
-                
-                // Tooltip with full info
-                div.title = `ID:${el.id}\nClass:${el.className}\nText:"${el.text}"\nDesc:"${el.contentDesc}"\nChildren:${el.children}`;
-                
-                // Click handler
-                div.onclick = (e) => {
-                    e.stopPropagation();
-                    selectElement(el, div);
-                    performTap(bounds[0] + (bounds[2]-bounds[0])/2, bounds[1] + (bounds[3]-bounds[1])/2);
+                const img = new Image();
+                img.onload = () => {
+                    const rect = phoneFrame.getBoundingClientRect();
+                    canvas.width = rect.width;
+                    canvas.height = rect.height;
+                    
+                    // ✅ SHARP LAYOUT RENDERING
+                    ctx.imageSmoothingEnabled = false;
+                    ctx.imageSmoothingQuality = 'high';
+                    ctx.drawImage(img, 0, 0, rect.width, rect.height);
+                    
+                    // 🔥 FPS Calculation
+                    frameCount++;
+                    const now = performance.now();
+                    if (now - lastFrameTime >= 1000) {
+                        const fps = Math.round(frameCount * 1000 / (now - lastFrameTime));
+                        fpsCounter.textContent = `Layout FPS: ${fps}`;
+                        fpsDisplay.textContent = fps;
+                        frameCount = 0;
+                        lastFrameTime = now;
+                    }
                 };
                 
-                screen.appendChild(div);
-                elements.push(div);
+                img.onerror = () => {
+                    ctx.fillStyle = '#1a1a1a';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    ctx.fillStyle = '#ff4444';
+                    ctx.font = 'bold 24px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('Layout Error', canvas.width/2, canvas.height/2);
+                };
+                
+                img.src = 'data:image/png;base64,' + data.data;
+                
+                // Update mode indicator
+                if (data.type === 'layout') {
+                    typeIndicator.className = 'status-indicator layout';
+                    modeText.textContent = 'Mode: Layout Spy ';
+                }
+                
+            } catch (e) {
+                console.error('Layout render error:', e);
+            }
+        });
+
+        // Initial devices fetch
+        fetch('/devices').then(r => r.json()).then(updateDeviceList);
+
+        function updateDeviceList(devices) {
+            deviceList.innerHTML = devices.length ? 
+                devices.map(([id, info]) => `
+                    <div class="device ${!info.connected || info.status !== 'layout-active' ? 'disconnected' : ''}" 
+                         onclick="selectDevice('${id}', this)" title="${info.model || 'Unknown'}">
+                        <b>${info.model ? info.model.slice(0,12) : id.slice(0,8)}...</b><br>
+                        <small>${info.brand || ''} ${info.version || ''}</small><br>
+                        <span style="font-size: 12px;">
+                            ${info.status === 'layout-active' ? '🟠 LAYOUT LIVE' : 
+                              info.connected ? '🟢 LIVE' : '🔴 OFFLINE'}
+                        </span>
+                    </div>
+                `).join('') : '<div style="padding:20px;color:#666;">No Layout Spies Online</div>';
+        }
+
+        function selectDevice(deviceId, el) {
+            currentDevice = deviceId;
+            selectedDevice.textContent = deviceId.slice(0,8);
+            document.querySelectorAll('.device').forEach(d => d.classList.remove('active'));
+            el.classList.add('active');
+            socket.emit('control', { deviceId });
+            console.log('🎯 Layout Spy selected:', deviceId);
+        }
+
+        // 🔥 PERFECT TOUCH/MOUSE COORDINATE SCALING
+        let startX = 0, startY = 0, dragging = false;
+
+        function getScaledCoords(clientX, clientY) {
+            const rect = phoneFrame.getBoundingClientRect();
+            const scaleX = deviceWidth / rect.width;
+            const scaleY = deviceHeight / rect.height;
+            return {
+                x: Math.floor((clientX - rect.left) * scaleX),
+                y: Math.floor((clientY - rect.top) * scaleY)
+            };
+        }
+
+        // Touch/Mouse events
+        ['mousedown', 'touchstart'].forEach(event => {
+            phoneFrame.addEventListener(event, e => {
+                e.preventDefault();
+                dragging = true;
+                const coords = getScaledCoords(
+                    e.touches?.[0]?.clientX || e.clientX,
+                    e.touches?.[0]?.clientY || e.clientY
+                );
+                startX = coords.x; 
+                startY = coords.y;
+                sendTap(startX, startY);
             });
         });
 
-        // Element selection
-        function selectElement(el, div) {
-            if (selectedElement) selectedElement.style.boxShadow = '';
-            selectedElement = div;
-            if (selectedElement) {
-                selectedElement.style.boxShadow = '0 0 20px #00ff00';
-                console.log('Selected:', el);
+        ['mousemove', 'touchmove'].forEach(event => {
+            phoneFrame.addEventListener(event, e => {
+                if (!dragging || !currentDevice) return;
+                e.preventDefault();
+                const coords = getScaledCoords(
+                    e.touches?.[0]?.clientX || e.clientX,
+                    e.touches?.[0]?.clientY || e.clientY
+                );
+                sendSwipe(startX, startY, coords.x, coords.y);
+            });
+        });
+
+        ['mouseup', 'touchend', 'touchcancel'].forEach(event => {
+            phoneFrame.addEventListener(event, e => {
+                dragging = false;
+            });
+        });
+
+        function sendTap(x, y) {
+            if (!currentDevice) return;
+            socket.emit('control', { 
+                deviceId: currentDevice, 
+                action: 'tap', 
+                x: Math.floor(x), 
+                y: Math.floor(y) 
+            });
+            console.log('👆 Tap sent:', x, y);
+        }
+
+        function sendSwipe(sx, sy, ex, ey) {
+            if (!currentDevice) return;
+            socket.emit('control', { 
+                deviceId: currentDevice, 
+                action: 'swipe', 
+                startX: Math.floor(sx), startY: Math.floor(sy),
+                endX: Math.floor(ex), endY: Math.floor(ey)
+            });
+        }
+
+        function sendBack() {
+            if (!currentDevice) return;
+            socket.emit('control', { deviceId: currentDevice, action: 'back' });
+        }
+
+        function toggleFullScreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(() => {});
+            } else {
+                document.exitFullscreen();
             }
         }
 
-        // Screen tap (anywhere)
-        screen.onclick = (e) => {
-            if (!highlightMode) {
-                const rect = screen.getBoundingClientRect();
-                const x = (e.clientX - rect.left) / screenScale;
-                const y = (e.clientY - rect.top) / screenScale;
-                performTap(x, y);
+        // Keyboard shortcuts
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape') {
+                document.exitFullscreen();
+            } else if (e.key === 'b' || e.key === 'B') {
+                sendBack();
             }
-        };
-
-        // Control functions
-        function performTap(x, y) {
-            socket.emit('control', {
-                action: 'tap',
-                x: x,
-                y: y
-            });
-            console.log(`👆 Tap at ${Math.round(x)}, ${Math.round(y)}`);
-        }
-
-        function performSwipe(sx, sy, ex, ey) {
-            socket.emit('control', {
-                action: 'swipe',
-                startX: sx,
-                startY: sy,
-                endX: ex,
-                endY: ey
-            });
-        }
-
-        function performBack() {
-            socket.emit('control', { action: 'back' });
-            console.log('← Back pressed');
-        }
-
-        function toggleHighlight() {
-            highlightMode = !highlightMode;
-            screen.style.cursor = highlightMode ? 'crosshair' : 'pointer';
-        }
-
-        // Device list
-        socket.on('device-list', (devices) => {
-            console.log('Available devices:', devices);
         });
     </script>
 </body>

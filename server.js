@@ -40,12 +40,18 @@ io.on('connection', (socket) => {
     });
 
     // 🔥 LAYOUT RELAY (NEW)
-    socket.on('layout-update', (data) => {
-        const deviceId = data.deviceId;
-        if (devices.has(deviceId)) {
-            socket.to(deviceId).emit('layout-update', data);
-        }
+    // Socket.io handler for layout updates
+socket.on('layout-update', (data) => {
+    console.log('📊 Layout received:', data.elements?.length || 0, 'elements');
+    
+    // Send to web clients
+    io.emit('layout-update', {
+        deviceId: data.deviceId,
+        elements: data.elements || [],
+        screen: { width: data.width, height: data.height },
+        timestamp: data.timestamp
     });
+});
 
     // Control relay
     socket.on('control', (data) => {

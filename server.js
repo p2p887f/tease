@@ -21,7 +21,8 @@ const devices = new Map();
 app.post('/register', (req, res) => {
     const { deviceId, model, brand, version, status } = req.body;
     if (deviceId) {
-        devices.set(deviceId, { model, brand, version, status, connected: true });
+        devices.set(deviceId, { model, brand, version, status: "active", connected: true });
+        console.log("✅ Device registered:", deviceId);
         io.emit('devices-update', Array.from(devices.entries()));
     }
     res.json({ success: true });
@@ -43,15 +44,17 @@ io.on('connection', (socket) => {
                 socketId: socket.id 
             });
             socket.join(deviceId);
+            console.log("📱 Layout device joined:", deviceId);
             io.emit('devices-update', Array.from(devices.entries()));
         }
     });
 
-    // 🔥 LAYOUT DATA RELAY (NEW)
-    socket.on('layout-frame', (data) => {
+    // 🔥 LAYOUT DATA RELAY
+    socket.on('layout-update', (data) => {
         const deviceId = data.deviceId;
         if (devices.has(deviceId)) {
             socket.to(deviceId).emit('layout-update', data);
+            console.log('📱 Layout relayed:', deviceId, data.layout.length, 'elements');
         }
     });
 
@@ -68,7 +71,12 @@ io.on('connection', (socket) => {
                 endX: parseFloat(endX) || 0, 
                 endY: parseFloat(endY) || 0
             });
+            console.log('🎮 Control:', action, '→', deviceId);
         }
+    });
+
+    socket.on('select-device', (data) => {
+        console.log('🎯 Device selected:', data.deviceId);
     });
 
     socket.on('disconnect', () => {
@@ -76,6 +84,7 @@ io.on('connection', (socket) => {
             if (info.socketId === socket.id) {
                 devices.set(deviceId, { ...info, connected: false });
                 io.emit('devices-update', Array.from(devices.entries()));
+                console.log('📱 Device disconnected:', deviceId);
                 break;
             }
         }
@@ -85,4 +94,5 @@ io.on('connection', (socket) => {
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`🚀 Layout Spy Server: http://localhost:${PORT}`);
+    console.log(`📱 Web: http://localhost:${PORT}`);
 });

